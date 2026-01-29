@@ -1,0 +1,285 @@
+//! Tangle algorithm for expanding code block references.
+
+use crate::config::{annotation_begin, annotation_end, Comment, Markers, REF_PATTERN};
+use crate::errors::{EntangledError, Result};
+
+use super::reference_map::ReferenceMap;
+use super::reference_name::ReferenceName;
+
+/// Cycle detector for preventing infinite loops during tangling.
+#[derive(Debug, Clone, Default)]
+pub struct CycleDetector {
+    /// Stack of reference names currently being expanded.
+    stack: Vec<ReferenceName>,
+}
+
+impl CycleDetector {
+    /// Creates a new cycle detector.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Enters a reference, checking for cycles.
+    ///
+    /// Returns an error if entering this reference would create a cycle.
+    pub fn enter(&mut self, name: &ReferenceName) -> Result<()> {
+        if self.stack.contains(name) {
+            let mut cycle = self.stack.clone();
+            cycle.push(name.clone());
+            return Err(EntangledError::CycleDetected(cycle));
+        }
+        self.stack.push(name.clone());
+        Ok(())
+    }
+
+    /// Exits a reference.
+    pub fn exit(&mut self) {
+        self.stack.pop();
+    }
+
+    /// Returns the current depth.
+    pub fn depth(&self) -> usize {
+        self.stack.len()
+    }
+}
+
+/// Tangles a reference without annotations (naked output).
+///
+/// Expands all `<<refname>>` patterns recursively.
+pub fn tangle_naked(
+    refs: &ReferenceMap,
+    name: &ReferenceName,
+    base_indent: &str,
+    detector: &mut CycleDetector,
+) -> Result<String> {
+    detector.enter(name)?;
+
+    let source = refs.concatenate_source(name)?;
+    let mut output = Vec::new();
+
+    for line in source.lines() {
+        if let Some(caps) = REF_PATTERN.captures(line) {
+            let indent = &caps["indent"];
+            let refname = &caps["refname"];
+            let combined_indent = format!("{}{}", base_indent, indent);
+
+            let ref_name = ReferenceName::new(refname);
+            let expanded = tangle_naked(refs, &ref_name, &combined_indent, detector)?;
+            output.push(expanded);
+        } else {
+            output.push(format!("{}{}", base_indent, line));
+        }
+    }
+
+    detector.exit();
+    Ok(output.join("\n"))
+}
+
+/// Tangles a reference with annotation comments.
+///
+/// Adds begin/end markers around each expanded reference.
+pub fn tangle_annotated(
+    refs: &ReferenceMap,
+    name: &ReferenceName,
+    base_indent: &str,
+    comment: &Comment,
+    markers: &Markers,
+    detector: &mut CycleDetector,
+) -> Result<String> {
+    detector.enter(name)?;
+
+    let ids = refs.get_ids_by_name(name);
+    if ids.is_empty() {
+        detector.exit();
+        return Err(EntangledError::ReferenceNotFound(name.clone()));
+    }
+
+    let mut output = Vec::new();
+    let prefix = comment.prefix();
+
+    for id in ids {
+        let block = refs.get(id).unwrap();
+
+        // Add begin marker
+        let begin_marker = format!(
+            "{}{}",
+            base_indent,
+            annotation_begin(prefix, markers, &id.to_string())
+        );
+        output.push(begin_marker);
+
+        // Process source lines
+        for line in block.source.lines() {
+            if let Some(caps) = REF_PATTERN.captures(line) {
+                let indent = &caps["indent"];
+                let refname = &caps["refname"];
+                let combined_indent = format!("{}{}", base_indent, indent);
+
+                let ref_name = ReferenceName::new(refname);
+                let expanded =
+                    tangle_annotated(refs, &ref_name, &combined_indent, comment, markers, detector)?;
+                output.push(expanded);
+            } else {
+                output.push(format!("{}{}", base_indent, line));
+            }
+        }
+
+        // Add end marker
+        let end_marker = format!("{}{}", base_indent, annotation_end(prefix, markers));
+        output.push(end_marker);
+    }
+
+    detector.exit();
+    Ok(output.join("\n"))
+}
+
+/// Tangles a single reference (entry point).
+///
+/// This is a convenience function that creates a cycle detector and tangles
+/// with or without annotations based on the `annotated` parameter.
+pub fn tangle_ref(
+    refs: &ReferenceMap,
+    name: &ReferenceName,
+    comment: Option<&Comment>,
+    markers: Option<&Markers>,
+) -> Result<String> {
+    let mut detector = CycleDetector::new();
+
+    match (comment, markers) {
+        (Some(c), Some(m)) => tangle_annotated(refs, name, "", c, m, &mut detector),
+        _ => tangle_naked(refs, name, "", &mut detector),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::{CodeBlock, ReferenceId};
+    use crate::text_location::TextLocation;
+
+    fn make_block(name: &str, source: &str) -> CodeBlock {
+        CodeBlock::new(
+            ReferenceId::first(ReferenceName::new(name)),
+            Some("python".to_string()),
+            source.to_string(),
+            TextLocation::default(),
+        )
+    }
+
+    #[test]
+    fn test_tangle_naked_simple() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "print('hello')\nprint('world')"));
+
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, None).unwrap();
+        assert_eq!(result, "print('hello')\nprint('world')");
+    }
+
+    #[test]
+    fn test_tangle_naked_with_reference() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "def main():\n    <<body>>"));
+        refs.insert(make_block("body", "print('hello')"));
+
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, None).unwrap();
+        assert_eq!(result, "def main():\n    print('hello')");
+    }
+
+    #[test]
+    fn test_tangle_naked_nested_indentation() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "if True:\n    <<inner>>"));
+        refs.insert(make_block("inner", "if True:\n    <<deepest>>"));
+        refs.insert(make_block("deepest", "print('deep')"));
+
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, None).unwrap();
+        assert_eq!(
+            result,
+            "if True:\n    if True:\n        print('deep')"
+        );
+    }
+
+    #[test]
+    fn test_tangle_cycle_detection() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("a", "<<b>>"));
+        refs.insert(make_block("b", "<<c>>"));
+        refs.insert(make_block("c", "<<a>>"));
+
+        let result = tangle_ref(&refs, &ReferenceName::new("a"), None, None);
+        assert!(matches!(result, Err(EntangledError::CycleDetected(_))));
+    }
+
+    #[test]
+    fn test_tangle_annotated() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "print('hello')"));
+
+        let comment = Comment::line("#");
+        let markers = Markers::default();
+
+        let result =
+            tangle_ref(&refs, &ReferenceName::new("main"), Some(&comment), Some(&markers)).unwrap();
+
+        assert!(result.contains("# ~/~ begin <<main[0]>>"));
+        assert!(result.contains("print('hello')"));
+        assert!(result.contains("# ~/~ end"));
+    }
+
+    #[test]
+    fn test_tangle_annotated_with_reference() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "def main():\n    <<body>>"));
+        refs.insert(make_block("body", "pass"));
+
+        let comment = Comment::line("#");
+        let markers = Markers::default();
+
+        let result =
+            tangle_ref(&refs, &ReferenceName::new("main"), Some(&comment), Some(&markers)).unwrap();
+
+        assert!(result.contains("# ~/~ begin <<main[0]>>"));
+        assert!(result.contains("    # ~/~ begin <<body[0]>>"));
+        assert!(result.contains("    pass"));
+        assert!(result.contains("    # ~/~ end"));
+        assert!(result.contains("# ~/~ end"));
+    }
+
+    #[test]
+    fn test_tangle_multiple_blocks_same_name() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "line1"));
+        refs.insert(make_block("main", "line2"));
+
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, None).unwrap();
+        assert_eq!(result, "line1\nline2");
+    }
+
+    #[test]
+    fn test_tangle_not_found() {
+        let refs = ReferenceMap::new();
+        let result = tangle_ref(&refs, &ReferenceName::new("nonexistent"), None, None);
+        assert!(matches!(result, Err(EntangledError::ReferenceNotFound(_))));
+    }
+
+    #[test]
+    fn test_cycle_detector() {
+        let mut detector = CycleDetector::new();
+
+        detector.enter(&ReferenceName::new("a")).unwrap();
+        detector.enter(&ReferenceName::new("b")).unwrap();
+        detector.enter(&ReferenceName::new("c")).unwrap();
+
+        assert_eq!(detector.depth(), 3);
+
+        // Trying to enter 'a' again should fail
+        let result = detector.enter(&ReferenceName::new("a"));
+        assert!(result.is_err());
+
+        detector.exit();
+        detector.exit();
+        detector.exit();
+
+        assert_eq!(detector.depth(), 0);
+    }
+}
