@@ -266,10 +266,18 @@ Comment prefix varies by language (`//`, `--`, `/* */`, etc.).
 
 ## Project Structure
 
-This project is organized as a Cargo workspace with two crates:
+This project is organized as a Cargo workspace:
 
-- **`entangled`** - Core library with no CLI dependencies. Use this for programmatic access.
-- **`entangled-cli`** - Command-line interface. Depends on the library.
+| Crate | Type | Description |
+|-------|------|-------------|
+| `entangled` | Library | Core library with no CLI dependencies |
+| `entangled-cli` | Binary | Command-line interface |
+| `pyentangled` | Python | Python bindings and CLI (PyO3/maturin) |
+
+## Documentation
+
+- [Architecture Overview](docs/architecture.md) - System design and module organization
+- [CLI Comparison](docs/cli-comparison.md) - Comparison of Rust and Python CLIs
 
 ## Library API
 

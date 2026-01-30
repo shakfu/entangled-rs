@@ -1,3 +1,7 @@
 [workspace]
-members = ["entangled", "entangled-cli"]
+members = ["entangled", "entangled-cli", "pyentangled"]
 resolver = "2"
+
+# Exclude pyentangled from default workspace operations since it requires
+# maturin and Python. Build with: cd pyentangled && maturin develop
+default-members = ["entangled", "entangled-cli"]
