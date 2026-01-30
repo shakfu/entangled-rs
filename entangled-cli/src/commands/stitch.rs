@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use crate::errors::Result;
-use crate::interface::{stitch_documents, Context};
+use entangled::errors::Result;
+use entangled::interface::{stitch_documents, Context};
 
 /// Options for the stitch command.
 #[derive(Debug, Clone, Default)]
@@ -19,6 +19,13 @@ pub struct StitchOptions {
 /// Executes the stitch command.
 pub fn stitch(ctx: &mut Context, options: StitchOptions) -> Result<()> {
     tracing::info!("Stitching documents...");
+
+    if !options.files.is_empty() {
+        tracing::warn!(
+            "File filtering not yet implemented, processing all files (ignoring {} specified files)",
+            options.files.len()
+        );
+    }
 
     let transaction = stitch_documents(ctx)?;
 

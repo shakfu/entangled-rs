@@ -4,10 +4,9 @@ use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::time::Duration;
 
+use entangled::errors::{EntangledError, Result};
+use entangled::interface::{sync_documents, Context};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-
-use crate::errors::{EntangledError, Result};
-use crate::interface::{sync_documents, Context};
 
 /// Options for the watch command.
 #[derive(Debug, Clone, Default)]

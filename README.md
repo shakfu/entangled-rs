@@ -42,13 +42,13 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 ```bash
 git clone https://github.com/entangled/entangled-rs
 cd entangled-rs
-cargo install --path .
+cargo install --path entangled-cli
 ```
 
 ### Using Cargo
 
 ```bash
-cargo install entangled
+cargo install entangled-cli
 ```
 
 ## Quick Start
@@ -264,19 +264,28 @@ The format is:
 
 Comment prefix varies by language (`//`, `--`, `/* */`, etc.).
 
+## Project Structure
+
+This project is organized as a Cargo workspace with two crates:
+
+- **`entangled`** - Core library with no CLI dependencies. Use this for programmatic access.
+- **`entangled-cli`** - Command-line interface. Depends on the library.
+
 ## Library API
 
 ### Basic Usage
 
 ```rust
-use entangled::{Context, Config};
-use entangled::commands::{tangle, TangleOptions};
+use entangled::interface::Context;
+use entangled::interface::{tangle_documents, stitch_documents, sync_documents};
 
 // Create context from current directory
 let mut ctx = Context::from_current_dir()?;
 
 // Run tangle
-tangle(&mut ctx, TangleOptions::default())?;
+let transaction = tangle_documents(&mut ctx)?;
+transaction.execute(&mut ctx.filedb)?;
+ctx.save_filedb()?;
 ```
 
 ### Core Types

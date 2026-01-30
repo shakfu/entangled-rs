@@ -1,7 +1,7 @@
 //! Sync command implementation.
 
-use crate::errors::Result;
-use crate::interface::{sync_documents, Context};
+use entangled::errors::Result;
+use entangled::interface::{stitch_documents, tangle_documents, Context};
 
 /// Options for the sync command.
 #[derive(Debug, Clone, Default)]
@@ -11,10 +11,33 @@ pub struct SyncOptions {
 }
 
 /// Executes the sync command.
-pub fn sync(ctx: &mut Context, _options: SyncOptions) -> Result<()> {
+///
+/// Performs stitch first (to capture any code changes), then tangle.
+pub fn sync(ctx: &mut Context, options: SyncOptions) -> Result<()> {
     tracing::info!("Synchronizing documents...");
 
-    sync_documents(ctx)?;
+    // First stitch any changes from tangled files
+    let stitch_tx = stitch_documents(ctx)?;
+    if !stitch_tx.is_empty() {
+        if options.force {
+            stitch_tx.execute_force(&mut ctx.filedb)?;
+        } else {
+            stitch_tx.execute(&mut ctx.filedb)?;
+        }
+    }
+
+    // Then tangle all documents
+    let tangle_tx = tangle_documents(ctx)?;
+    if !tangle_tx.is_empty() {
+        if options.force {
+            tangle_tx.execute_force(&mut ctx.filedb)?;
+        } else {
+            tangle_tx.execute(&mut ctx.filedb)?;
+        }
+    }
+
+    // Save file database
+    ctx.save_filedb()?;
 
     println!("Synchronization complete.");
 

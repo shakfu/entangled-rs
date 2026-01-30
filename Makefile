@@ -1,24 +1,24 @@
 .PHONY: test build clean check fmt clippy
 
 test:
-	cargo test
+	cargo test --workspace
 
 build:
-	cargo build
+	cargo build --workspace
 
 release:
-	cargo build --release
+	cargo build --workspace --release
 
 clean:
 	cargo clean
 
 check:
-	cargo check
+	cargo check --workspace
 
 fmt:
-	cargo fmt
+	cargo fmt --all
 
 clippy:
-	cargo clippy -- -D warnings
+	cargo clippy --workspace -- -D warnings
 
 all: fmt clippy test build

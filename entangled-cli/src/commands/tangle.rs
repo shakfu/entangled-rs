@@ -2,8 +2,8 @@
 
 use std::path::PathBuf;
 
-use crate::errors::Result;
-use crate::interface::{tangle_documents, Context};
+use entangled::errors::Result;
+use entangled::interface::{tangle_documents, Context};
 
 /// Options for the tangle command.
 #[derive(Debug, Clone, Default)]
@@ -19,6 +19,13 @@ pub struct TangleOptions {
 /// Executes the tangle command.
 pub fn tangle(ctx: &mut Context, options: TangleOptions) -> Result<()> {
     tracing::info!("Tangling documents...");
+
+    if !options.files.is_empty() {
+        tracing::warn!(
+            "File filtering not yet implemented, processing all files (ignoring {} specified files)",
+            options.files.len()
+        );
+    }
 
     let transaction = tangle_documents(ctx)?;
 

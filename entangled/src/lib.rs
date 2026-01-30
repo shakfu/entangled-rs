@@ -14,13 +14,14 @@
 //!
 //! ```no_run
 //! use entangled::interface::Context;
-//! use entangled::commands::{tangle, TangleOptions};
+//! use entangled::interface::{tangle_documents, stitch_documents, sync_documents};
 //!
 //! let mut ctx = Context::from_current_dir().unwrap();
-//! tangle(&mut ctx, TangleOptions::default()).unwrap();
+//! let transaction = tangle_documents(&mut ctx).unwrap();
+//! transaction.execute(&mut ctx.filedb).unwrap();
+//! ctx.save_filedb().unwrap();
 //! ```
 
-pub mod commands;
 pub mod config;
 pub mod errors;
 pub mod hooks;
@@ -35,8 +36,3 @@ pub use config::Config;
 pub use errors::{EntangledError, Result};
 pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
-
-// Re-export command options
-pub use commands::{
-    ResetOptions, StatusOptions, StitchOptions, SyncOptions, TangleOptions, WatchOptions,
-};

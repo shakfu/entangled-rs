@@ -1,9 +1,10 @@
 //! Reset command implementation.
 
 use std::fs;
+use std::io::{self, Write};
 
-use crate::errors::Result;
-use crate::interface::Context;
+use entangled::errors::Result;
+use entangled::interface::Context;
 
 /// Options for the reset command.
 #[derive(Debug, Clone, Default)]
@@ -17,18 +18,40 @@ pub struct ResetOptions {
 /// Executes the reset command.
 pub fn reset(ctx: &mut Context, options: ResetOptions) -> Result<()> {
     if options.delete_files {
-        // Delete all tracked files
+        // Get list of tracked files
         let tracked: Vec<_> = ctx.filedb.tracked_files().cloned().collect();
 
-        for path in &tracked {
-            let full_path = ctx.resolve_path(path);
-            if full_path.exists() {
-                tracing::info!("Deleting {}", full_path.display());
-                fs::remove_file(&full_path)?;
-            }
-        }
+        if tracked.is_empty() {
+            println!("No tracked files to delete.");
+        } else {
+            // Confirm unless --force is specified
+            if !options.force {
+                println!("This will delete {} tracked files:", tracked.len());
+                for path in &tracked {
+                    println!("  {}", path.display());
+                }
+                print!("Continue? [y/N] ");
+                io::stdout().flush()?;
 
-        println!("Deleted {} tracked files.", tracked.len());
+                let mut input = String::new();
+                io::stdin().read_line(&mut input)?;
+                if !input.trim().eq_ignore_ascii_case("y") {
+                    println!("Aborted.");
+                    return Ok(());
+                }
+            }
+
+            // Delete all tracked files
+            for path in &tracked {
+                let full_path = ctx.resolve_path(path);
+                if full_path.exists() {
+                    tracing::info!("Deleting {}", full_path.display());
+                    fs::remove_file(&full_path)?;
+                }
+            }
+
+            println!("Deleted {} tracked files.", tracked.len());
+        }
     }
 
     // Clear the file database
@@ -56,8 +79,8 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    use crate::io::FileData;
     use chrono::Utc;
+    use entangled::io::FileData;
 
     #[test]
     fn test_reset_clears_db() {
@@ -99,7 +122,7 @@ mod tests {
 
         assert!(file_path.exists());
 
-        // Reset with delete
+        // Reset with delete (force to skip confirmation)
         let options = ResetOptions {
             delete_files: true,
             force: true,

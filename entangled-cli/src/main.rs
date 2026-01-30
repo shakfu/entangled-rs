@@ -6,7 +6,8 @@ use std::process::ExitCode;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
-use entangled::commands;
+mod commands;
+
 use entangled::interface::Context;
 
 #[derive(Parser)]

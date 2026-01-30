@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+#### Project Structure
+- **Workspace refactoring**: Split single crate into a Cargo workspace with two crates:
+  - `entangled` - Core library crate with no CLI dependencies
+  - `entangled-cli` - CLI binary crate (binary still named `entangled`)
+- Moved CLI-specific dependencies (`clap`, `tracing-subscriber`) to CLI crate only
+- Moved `commands` module from library to CLI crate
+- Library can now be used programmatically without pulling in CLI dependencies
+- Updated Makefile to use `--workspace` flag for all commands
+
+#### Installation
+- CLI installation now uses `cargo install entangled-cli` or `cargo install --path entangled-cli`
+
 ## [0.1.0]
 
 ### Added

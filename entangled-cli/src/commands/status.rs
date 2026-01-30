@@ -1,8 +1,8 @@
 //! Status command implementation.
 
-use crate::errors::Result;
-use crate::interface::{Context, Document};
-use crate::io::FileData;
+use entangled::errors::Result;
+use entangled::interface::{Context, Document};
+use entangled::io::FileData;
 
 /// Options for the status command.
 #[derive(Debug, Clone, Default)]
@@ -86,7 +86,7 @@ pub fn status(ctx: &Context, options: StatusOptions) -> Result<()> {
 }
 
 /// Gets the status of a target file.
-fn get_file_status(path: &std::path::Path, filedb: &crate::io::FileDB) -> Result<FileStatus> {
+fn get_file_status(path: &std::path::Path, filedb: &entangled::io::FileDB) -> Result<FileStatus> {
     if !path.exists() {
         if filedb.is_tracked(path) {
             return Ok(FileStatus::Missing);

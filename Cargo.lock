@@ -343,7 +343,6 @@ name = "entangled"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "clap",
  "criterion",
  "glob",
  "hex",
@@ -361,6 +360,18 @@ dependencies = [
  "thiserror",
  "tokio",
  "toml",
+ "tracing",
+]
+
+[[package]]
+name = "entangled-cli"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clap",
+ "entangled",
+ "notify",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
 ]
