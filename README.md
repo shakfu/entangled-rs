@@ -278,6 +278,7 @@ This project is organized as a Cargo workspace:
 
 - [Architecture Overview](docs/architecture.md) - System design and module organization
 - [CLI Comparison](docs/cli-comparison.md) - Comparison of Rust and Python CLIs
+- [Benchmarks](docs/benchmarks.md) - Performance comparison of implementations
 
 ## Library API
 

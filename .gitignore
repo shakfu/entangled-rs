@@ -24,3 +24,13 @@ target
 
 .venv
 __pycache__
+dist/
+build/
+
+# compiled objects
+*.o
+*.so
+*.dll
+*.dylib
+*.lib
+*.a
