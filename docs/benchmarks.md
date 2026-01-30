@@ -12,9 +12,9 @@ Comparison of three Entangled implementations on tangle operations.
 
 ## Test Setup
 
-- **Operation**: `tangle` command
-- **Workload**: Markdown file with N code blocks referencing each other
-- **Iterations**: 5 per size
+- **Operation**: `tangle` command (dry run)
+- **Workload**: Markdown file with N code blocks, each targeting a separate file
+- **Iterations**: 5 per size (after warmup)
 - **Platform**: macOS (Apple Silicon)
 - **Build**: Release mode for both Rust implementations
 
@@ -22,55 +22,60 @@ Comparison of three Entangled implementations on tangle operations.
 
 ### Absolute Times (ms)
 
-| Blocks | entangled-cli | pyentangled | entangled (Python) |
-|--------|---------------|-------------|-------------------|
-| 10     | 12.3 ms       | 37.6 ms     | 174 ms            |
-| 50     | 15.1 ms       | 38.9 ms     | 176 ms            |
-| 100    | 19.9 ms       | 39.8 ms     | 174 ms            |
-| 200    | 30.8 ms       | 43.2 ms     | 174 ms            |
-| 500    | 60.6 ms       | 52.6 ms     | 182 ms            |
+| Blocks | entangled-cli | pyentangled | Python entangled |
+|--------|---------------|-------------|------------------|
+| 10     | 5.8 ms        | 32.5 ms     | 202 ms           |
+| 50     | 4.8 ms        | 33.9 ms     | 201 ms           |
+| 100    | 4.8 ms        | 31.8 ms     | 201 ms           |
+| 500    | 6.7 ms        | 33.1 ms     | 203 ms           |
+| 1000   | 8.6 ms        | 35.3 ms     | 213 ms           |
+| 5000   | 24.4 ms       | 53.0 ms     | 240 ms           |
+| 10000  | 50.5 ms       | 72.7 ms     | 277 ms           |
 
 ### Speedup vs Python entangled
 
 | Blocks | entangled-cli | pyentangled |
 |--------|---------------|-------------|
-| 10     | 14.2x         | 4.6x        |
-| 50     | 11.7x         | 4.5x        |
-| 100    | 8.7x          | 4.4x        |
-| 200    | 5.7x          | 4.0x        |
-| 500    | 3.0x          | 3.5x        |
+| 10     | 35x           | 6.2x        |
+| 50     | 42x           | 5.9x        |
+| 100    | 42x           | 6.3x        |
+| 500    | 30x           | 6.1x        |
+| 1000   | 25x           | 6.0x        |
+| 5000   | 10x           | 4.5x        |
+| 10000  | 5.5x          | 3.8x        |
 
 ## Analysis
 
 ### entangled-cli (Rust)
 
 - **Fastest implementation** across all workload sizes
-- **3-14x faster** than Python entangled
-- Performance scales linearly: ~12ms base + ~0.1ms per block
-- Minimal startup overhead
+- **5-42x faster** than Python entangled
+- Scales linearly: ~5ms base + ~4.5us per block
+- Minimal startup overhead (~5ms)
 
 ### pyentangled (Python + Rust bindings)
 
-- **3.5-4.6x faster** than Python entangled
-- ~25ms Python overhead on top of Rust execution time
+- **4-6x faster** than Python entangled
+- ~30ms Python overhead on top of Rust execution time
 - Overhead components:
   - Python interpreter startup
   - Module imports (argparse, pathlib, etc.)
   - PyO3 data marshalling
-- Still significantly faster than pure Python
+- Good choice for Python integration
 
 ### entangled (Python)
 
-- **Near-constant time** (~174ms) regardless of block count
+- **Near-constant time** (~200ms) for small documents
 - Dominated by Python startup and import time
-- Actual **tangling is fast** once interpreter is running
+- Starts scaling at ~1000+ blocks
+- At 10000 blocks: 277ms (only ~75ms for actual work)
 
 ## Performance Breakdown
 
 ```
-entangled-cli:  [Rust startup ~10ms] + [Rust tangling]
-pyentangled:    [Python startup ~25ms] + [Rust tangling via PyO3]
-entangled:      [Python startup ~150ms] + [Python tangling]
+entangled-cli:  [~5ms startup] + [~4.5us/block]
+pyentangled:    [~30ms Python startup] + [~4.5us/block]
+entangled:      [~200ms Python startup] + [~7.5us/block]
 ```
 
 ## Recommendations
@@ -79,8 +84,8 @@ entangled:      [Python startup ~150ms] + [Python tangling]
 |----------|---------------------------|
 | Production / CI pipelines | `entangled-cli` (Rust) |
 | Python integration / scripting | `pyentangled` |
-| Large documents (500+ blocks) | `entangled-cli` (Rust) |
-| Any workload | `entangled-cli` preferred, `pyentangled` acceptable |
+| Large documents (1000+ blocks) | `entangled-cli` (Rust) |
+| Any performance-critical workload | `entangled-cli` (Rust) |
 
 ## Important Notes
 
@@ -104,7 +109,7 @@ cargo build --release -p entangled-cli
 cd pyentangled && maturin develop --release && cd ..
 
 # Run benchmark
-python3 benchmarks/compare_implementations.py --sizes 10,50,100,200,500 --iterations 5
+python3 benchmarks/compare_implementations.py --sizes 10,50,100,500,1000,5000,10000 --iterations 5
 ```
 
 Options:

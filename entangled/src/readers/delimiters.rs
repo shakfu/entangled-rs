@@ -9,6 +9,17 @@ use crate::text_location::TextLocation;
 static FENCE_OPEN: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^(?P<indent>\s*)(?P<fence>`{3,}|~{3,})(?P<info>.*)$").unwrap());
 
+/// Checks if a line is a closing fence (same or more fence chars, no other content).
+#[inline]
+fn is_closing_fence(line: &str, fence_char: char, min_len: usize) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return false;
+    }
+    // Check all chars are the fence char and length is sufficient
+    trimmed.len() >= min_len && trimmed.chars().all(|c| c == fence_char)
+}
+
 /// A delimited token extracted from input.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DelimitedToken {
@@ -74,10 +85,6 @@ impl DelimitedTokenGetter {
         let fence_char = fence.chars().next().unwrap();
         let fence_len = fence.len();
 
-        // Build closing pattern: same or more fence chars
-        let close_pattern = format!(r"^\s*{}{{{},}}\s*$", fence_char, fence_len);
-        let close_regex = Regex::new(&close_pattern).unwrap();
-
         let mut content_lines = Vec::new();
 
         // Collect content until closing fence
@@ -86,7 +93,7 @@ impl DelimitedTokenGetter {
                 Some(content_line) => {
                     self.line_number += 1;
 
-                    if close_regex.is_match(content_line) {
+                    if is_closing_fence(content_line, fence_char, fence_len) {
                         // Found closing fence
                         let content = content_lines.join("\n");
                         return Some(ExtractResult::Token(DelimitedToken {
