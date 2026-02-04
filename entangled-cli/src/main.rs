@@ -3,12 +3,37 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
 use tracing_subscriber::EnvFilter;
 
 mod commands;
 
 use entangled::interface::Context;
+use entangled::Style;
+
+/// Code block syntax style for CLI argument.
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum CliStyle {
+    /// Native entangled-rs style: ```python #main file=out.py
+    EntangledRs,
+    /// Original Pandoc/entangled style: ``` {.python #main file=out.py}
+    Pandoc,
+    /// Quarto style: ```{python} with #| label: main inside block
+    Quarto,
+    /// RMarkdown/knitr style: ```{python, label=main, file=out.py}
+    Knitr,
+}
+
+impl From<CliStyle> for Style {
+    fn from(cli_style: CliStyle) -> Self {
+        match cli_style {
+            CliStyle::EntangledRs => Style::EntangledRs,
+            CliStyle::Pandoc => Style::Pandoc,
+            CliStyle::Quarto => Style::Quarto,
+            CliStyle::Knitr => Style::Knitr,
+        }
+    }
+}
 
 #[derive(Parser)]
 #[command(name = "entangled")]
@@ -25,6 +50,10 @@ struct Cli {
     /// Verbose output
     #[arg(short, long, global = true)]
     verbose: bool,
+
+    /// Code block syntax style (overrides config file)
+    #[arg(short, long, global = true, value_enum)]
+    style: Option<CliStyle>,
 
     #[command(subcommand)]
     command: Commands,
@@ -117,10 +146,15 @@ fn main() -> ExitCode {
         .unwrap_or_else(|| PathBuf::from("."));
 
     // Read configuration from file or use defaults
-    let config = match cli.config {
+    let mut config = match cli.config {
         Some(ref path) => entangled::config::read_config_file(path).unwrap_or_default(),
         None => entangled::config::read_config(&base_dir).unwrap_or_default(),
     };
+
+    // Override style if specified on command line
+    if let Some(cli_style) = cli.style {
+        config.style = cli_style.into();
+    }
 
     // Create context
     let mut ctx = match Context::new(config, base_dir) {

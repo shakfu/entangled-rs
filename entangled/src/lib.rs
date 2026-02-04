@@ -29,6 +29,7 @@ pub mod interface;
 pub mod io;
 pub mod model;
 pub mod readers;
+pub mod style;
 pub mod text_location;
 
 // Re-export commonly used types
@@ -36,3 +37,4 @@ pub use config::Config;
 pub use errors::{EntangledError, Result};
 pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
+pub use style::Style;

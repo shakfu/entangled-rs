@@ -20,6 +20,7 @@ pub use markers::{
 };
 pub use namespace_default::NamespaceDefault;
 pub use templates::{builtin_languages, find_language};
+pub use crate::style::Style;
 
 use crate::errors::Result;
 

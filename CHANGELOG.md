@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+#### Multi-Style Code Block Syntax Support
+- **Style enum**: Support for four code block syntax styles:
+  - `entangled-rs` (default): Native style with `python #name file=path`
+  - `pandoc`: Original entangled style with `{.python #name file=path}`
+  - `quarto`: Quarto/Jupyter style with `{python}` and `#|` comments inside block
+  - `knitr`: RMarkdown style with `{python, label=name, file=path}`
+- **Automatic style detection by file extension**:
+  - `.qmd` files use Quarto style
+  - `.Rmd` files use Knitr style
+  - `.md` files use configured default style
+- **CLI `--style` flag**: Override configured style from command line
+- **Config options**:
+  - `style`: Set default style for `.md` files
+  - `strip_quarto_options`: Control whether `#|` lines are removed from tangled output (default: true)
+- **New parsing functions**:
+  - `Properties::parse_pandoc()` for Pandoc-style info strings
+  - `Properties::parse_knitr()` for knitr-style comma-separated options
+  - `extract_quarto_options()` for extracting `#|` comment options from content
+
 ### Changed
 
 #### Project Structure

@@ -114,9 +114,12 @@ cat hello.py
 |--------|-------------|
 | `-c, --config <FILE>` | Configuration file path |
 | `-C, --directory <DIR>` | Working directory |
+| `-s, --style <STYLE>` | Code block syntax style (overrides config) |
 | `-v, --verbose` | Verbose output |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
+
+Available styles: `entangled-rs`, `pandoc`, `quarto`, `knitr`
 
 ### Tangle Options
 
@@ -141,11 +144,29 @@ entangled watch [OPTIONS]
 
 ## Code Block Syntax
 
-### Basic Syntax
+Entangled supports multiple code block syntax styles to work with different document formats.
+
+### Supported Styles
+
+| Style | File Extension | Example |
+|-------|----------------|---------|
+| `entangled-rs` | `.md` (default) | `` ```python #name file=out.py `` |
+| `pandoc` | `.md` (configured) | `` ``` {.python #name file=out.py} `` |
+| `quarto` | `.qmd` | `` ```{python} `` with `#\|` comments |
+| `knitr` | `.Rmd` | `` ```{python, label=name, file=out.py} `` |
+
+Style is determined automatically by file extension:
+- `.qmd` files always use Quarto style
+- `.Rmd` files always use Knitr style
+- `.md` files use the configured default (or `entangled-rs` if not set)
+
+### entangled-rs Style (Default)
+
+The native style uses space-separated properties:
 
 ````markdown
-```language #name file=output.py
-code here
+```python #main file=output.py
+print("Hello")
 ```
 ````
 
@@ -154,6 +175,40 @@ code here
 | `language` | Language identifier (e.g., `python`, `rust`) |
 | `#name` | Reference name for the block |
 | `file=path` | Output file path (makes block a "target") |
+
+### Pandoc Style
+
+The original Entangled/Pandoc style uses curly braces with dot-prefixed language:
+
+````markdown
+``` {.python #main file=output.py}
+print("Hello")
+```
+````
+
+### Quarto Style
+
+Quarto style uses simple braces for language and `#|` comments for options:
+
+````markdown
+```{python}
+#| label: main
+#| file: output.py
+print("Hello")
+```
+````
+
+By default, `#|` lines are stripped from tangled output. Set `strip_quarto_options = false` in config to preserve them.
+
+### Knitr Style
+
+RMarkdown/knitr style uses comma-separated options:
+
+````markdown
+```{python, label=main, file=output.py}
+print("Hello")
+```
+````
 
 ### References
 
@@ -206,7 +261,14 @@ Create `entangled.toml` in your project root:
 version = "2.0"
 
 # Glob patterns for source markdown files
-source_patterns = ["**/*.md"]
+source_patterns = ["**/*.md", "**/*.qmd", "**/*.Rmd"]
+
+# Code block syntax style for .md files
+# Options: "entangled-rs" (default), "pandoc", "quarto", "knitr"
+style = "entangled-rs"
+
+# Strip #| comment lines from tangled output (Quarto style)
+strip_quarto_options = true
 
 # How to annotate output files
 # Options: "standard", "naked", "supplemental"
@@ -229,6 +291,15 @@ name = "mylang"
 comment = "##"
 identifiers = ["ml", "myl"]
 ```
+
+### Style Options
+
+| Option | Description |
+|--------|-------------|
+| `style` | Default style for `.md` files |
+| `strip_quarto_options` | Remove `#\|` lines from output (default: true) |
+
+Note: `.qmd` and `.Rmd` files always use their native styles regardless of config.
 
 ### Annotation Methods
 

@@ -9,6 +9,7 @@ use super::config_data::{Config, HooksConfig, WatchConfig};
 use super::language::Language;
 use super::markers::Markers;
 use super::namespace_default::NamespaceDefault;
+use crate::style::Style;
 
 /// Partial configuration update that can be merged into a Config.
 ///
@@ -54,6 +55,14 @@ pub struct ConfigUpdate {
     /// File database path.
     #[serde(default)]
     pub filedb_path: Option<PathBuf>,
+
+    /// Code block syntax style.
+    #[serde(default)]
+    pub style: Option<Style>,
+
+    /// Whether to strip #| comment lines from tangled output.
+    #[serde(default)]
+    pub strip_quarto_options: Option<bool>,
 }
 
 impl ConfigUpdate {
@@ -84,6 +93,8 @@ impl ConfigUpdate {
                 .filedb_path
                 .clone()
                 .unwrap_or_else(|| base.filedb_path.clone()),
+            style: self.style.unwrap_or(base.style),
+            strip_quarto_options: self.strip_quarto_options.unwrap_or(base.strip_quarto_options),
             extra: base.extra.clone(),
         }
     }

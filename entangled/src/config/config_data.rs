@@ -9,6 +9,7 @@ use super::annotation_method::AnnotationMethod;
 use super::language::Language;
 use super::markers::Markers;
 use super::namespace_default::NamespaceDefault;
+use crate::style::Style;
 
 /// Main configuration structure for Entangled.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -53,6 +54,14 @@ pub struct Config {
     #[serde(default = "default_filedb_path")]
     pub filedb_path: PathBuf,
 
+    /// Code block syntax style.
+    #[serde(default)]
+    pub style: Style,
+
+    /// Whether to strip #| comment lines from tangled output (Quarto style).
+    #[serde(default = "default_strip_quarto_options")]
+    pub strip_quarto_options: bool,
+
     /// Additional custom settings.
     #[serde(default, flatten)]
     pub extra: HashMap<String, toml::Value>,
@@ -70,6 +79,10 @@ fn default_filedb_path() -> PathBuf {
     PathBuf::from(".entangled/filedb.json")
 }
 
+fn default_strip_quarto_options() -> bool {
+    true
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -83,6 +96,8 @@ impl Default for Config {
             watch: WatchConfig::default(),
             hooks: HooksConfig::default(),
             filedb_path: default_filedb_path(),
+            style: Style::default(),
+            strip_quarto_options: default_strip_quarto_options(),
             extra: HashMap::new(),
         }
     }
