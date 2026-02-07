@@ -3,7 +3,9 @@
 use std::path::PathBuf;
 
 use entangled::errors::Result;
-use entangled::interface::{stitch_documents, Context};
+use entangled::interface::{stitch_documents, stitch_files, Context};
+
+use super::helpers::{TransactionOptions, run_transaction};
 
 /// Options for the stitch command.
 #[derive(Debug, Clone, Default)]
@@ -12,6 +14,10 @@ pub struct StitchOptions {
     pub force: bool,
     /// Dry run - show what would be done without doing it.
     pub dry_run: bool,
+    /// Show unified diffs of what would change.
+    pub diff: bool,
+    /// Suppress normal output.
+    pub quiet: bool,
     /// Specific files to stitch (empty means all).
     pub files: Vec<PathBuf>,
 }
@@ -20,41 +26,19 @@ pub struct StitchOptions {
 pub fn stitch(ctx: &mut Context, options: StitchOptions) -> Result<()> {
     tracing::info!("Stitching documents...");
 
-    if !options.files.is_empty() {
-        tracing::warn!(
-            "File filtering not yet implemented, processing all files (ignoring {} specified files)",
-            options.files.len()
-        );
-    }
-
-    let transaction = stitch_documents(ctx)?;
-
-    if transaction.is_empty() {
-        println!("No files to stitch.");
-        return Ok(());
-    }
-
-    if options.dry_run {
-        println!("Would perform {} actions:", transaction.len());
-        for desc in transaction.describe() {
-            println!("  {}", desc);
-        }
-        return Ok(());
-    }
-
-    // Execute transaction
-    if options.force {
-        transaction.execute_force(&mut ctx.filedb)?;
+    let transaction = if options.files.is_empty() {
+        stitch_documents(ctx)?
     } else {
-        transaction.execute(&mut ctx.filedb)?;
-    }
+        let filtered = ctx.source_files_filtered(&options.files)?;
+        stitch_files(ctx, &filtered)?
+    };
 
-    // Save file database
-    ctx.save_filedb()?;
-
-    println!("Stitched {} files.", transaction.len());
-
-    Ok(())
+    run_transaction(ctx, transaction, &TransactionOptions {
+        force: options.force,
+        dry_run: options.dry_run,
+        diff: options.diff,
+        quiet: options.quiet,
+    }, "stitch")
 }
 
 #[cfg(test)]

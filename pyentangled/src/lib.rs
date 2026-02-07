@@ -376,7 +376,7 @@ impl PyDocument {
 /// Returns a Transaction that can be inspected or executed.
 #[pyfunction]
 fn tangle_documents(ctx: &mut PyContext) -> PyResult<PyTransaction> {
-    let tx = interface::tangle_documents(&mut ctx.inner).map_err(to_py_err)?;
+    let tx = interface::tangle_documents(&ctx.inner).map_err(to_py_err)?;
     Ok(PyTransaction { inner: tx })
 }
 
@@ -385,7 +385,7 @@ fn tangle_documents(ctx: &mut PyContext) -> PyResult<PyTransaction> {
 /// Returns a Transaction that can be inspected or executed.
 #[pyfunction]
 fn stitch_documents(ctx: &mut PyContext) -> PyResult<PyTransaction> {
-    let tx = interface::stitch_documents(&mut ctx.inner).map_err(to_py_err)?;
+    let tx = interface::stitch_documents(&ctx.inner).map_err(to_py_err)?;
     Ok(PyTransaction { inner: tx })
 }
 
@@ -415,36 +415,7 @@ fn execute_transaction(
 #[pyfunction]
 #[pyo3(signature = (ctx, force=false))]
 fn sync_documents(ctx: &mut PyContext, force: bool) -> PyResult<()> {
-    // Stitch first
-    let stitch_tx = interface::stitch_documents(&mut ctx.inner).map_err(to_py_err)?;
-    if !stitch_tx.is_empty() {
-        if force {
-            stitch_tx
-                .execute_force(&mut ctx.inner.filedb)
-                .map_err(to_py_err)?;
-        } else {
-            stitch_tx
-                .execute(&mut ctx.inner.filedb)
-                .map_err(to_py_err)?;
-        }
-    }
-
-    // Then tangle
-    let tangle_tx = interface::tangle_documents(&mut ctx.inner).map_err(to_py_err)?;
-    if !tangle_tx.is_empty() {
-        if force {
-            tangle_tx
-                .execute_force(&mut ctx.inner.filedb)
-                .map_err(to_py_err)?;
-        } else {
-            tangle_tx
-                .execute(&mut ctx.inner.filedb)
-                .map_err(to_py_err)?;
-        }
-    }
-
-    ctx.inner.save_filedb().map_err(to_py_err)?;
-    Ok(())
+    interface::sync_documents(&mut ctx.inner, force).map_err(to_py_err)
 }
 
 /// Tangle a reference by name from a reference map.

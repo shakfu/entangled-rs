@@ -4,12 +4,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::hooks::HookRegistry;
+use crate::hooks::{HookRegistry, ShebangHook, SpdxLicenseHook};
 use crate::io::{FileCache, FileDB, RealFileCache};
 
 /// Context for Entangled operations.
 ///
 /// Contains configuration, hooks, and file system access.
+#[derive(Debug)]
 pub struct Context {
     /// Configuration.
     pub config: Config,
@@ -29,12 +30,33 @@ impl Context {
     /// Creates a new context with the given configuration.
     pub fn new(config: Config, base_dir: PathBuf) -> std::io::Result<Self> {
         let filedb_path = base_dir.join(&config.filedb_path);
-        let filedb = FileDB::load(&filedb_path).unwrap_or_default();
+        let filedb = match FileDB::load(&filedb_path) {
+            Ok(db) => db,
+            Err(e) => {
+                if filedb_path.exists() {
+                    // File exists but failed to parse -- warn about data loss
+                    tracing::warn!(
+                        "Failed to load file database at {}: {}. Starting with empty database.",
+                        filedb_path.display(),
+                        e
+                    );
+                }
+                FileDB::default()
+            }
+        };
         let file_cache = Arc::new(RealFileCache::new(base_dir.clone()));
+
+        let mut hooks = HookRegistry::new();
+        if config.hooks.shebang {
+            hooks.add(ShebangHook::new());
+        }
+        if config.hooks.spdx_license {
+            hooks.add(SpdxLicenseHook::new());
+        }
 
         Ok(Self {
             config,
-            hooks: HookRegistry::new(),
+            hooks,
             file_cache,
             filedb,
             base_dir,
@@ -74,6 +96,44 @@ impl Context {
         files.sort();
         files.dedup();
         Ok(files)
+    }
+
+    /// Returns source files filtered to only include the specified paths.
+    ///
+    /// Each filter path is resolved relative to `base_dir` and compared
+    /// against the full set of source files. Returns an error if any
+    /// filter path does not match a known source file.
+    pub fn source_files_filtered(
+        &self,
+        filter: &[PathBuf],
+    ) -> crate::errors::Result<Vec<PathBuf>> {
+        let all_files = self.source_files()?;
+        let resolved_filters: Vec<PathBuf> = filter
+            .iter()
+            .map(|f| {
+                if f.is_absolute() {
+                    f.clone()
+                } else {
+                    self.base_dir.join(f)
+                }
+            })
+            .collect();
+
+        let mut result = Vec::new();
+        for filter_path in &resolved_filters {
+            if let Some(found) = all_files.iter().find(|f| *f == filter_path) {
+                result.push(found.clone());
+            } else {
+                return Err(crate::errors::EntangledError::Config(format!(
+                    "File {} is not a source file (does not match source_patterns)",
+                    filter_path.display()
+                )));
+            }
+        }
+
+        result.sort();
+        result.dedup();
+        Ok(result)
     }
 
     /// Resolves a path relative to the base directory.

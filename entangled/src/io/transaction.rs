@@ -3,6 +3,7 @@
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use chrono::Utc;
 
@@ -26,6 +27,11 @@ pub trait Action: std::fmt::Debug + Send + Sync {
 
     /// Returns a description of this action.
     fn describe(&self) -> String;
+
+    /// Returns the proposed new content, if any.
+    fn proposed_content(&self) -> Option<&str> {
+        None
+    }
 }
 
 /// Create a new file (fails if file exists).
@@ -80,6 +86,10 @@ impl Action for Create {
 
     fn describe(&self) -> String {
         format!("create {}", self.path.display())
+    }
+
+    fn proposed_content(&self) -> Option<&str> {
+        Some(&self.content)
     }
 }
 
@@ -139,6 +149,10 @@ impl Action for WriteAction {
 
     fn describe(&self) -> String {
         format!("write {}", self.path.display())
+    }
+
+    fn proposed_content(&self) -> Option<&str> {
+        Some(&self.content)
     }
 }
 
@@ -200,6 +214,7 @@ pub struct Transaction {
 
 impl Transaction {
     /// Creates a new empty transaction.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             actions: Vec::new(),
@@ -241,6 +256,55 @@ impl Transaction {
         self.actions.iter().map(|a| a.describe()).collect()
     }
 
+    /// Returns unified diffs for all actions that modify file content.
+    ///
+    /// For each write/create action, reads the existing file (if any) and
+    /// produces a unified diff against the proposed content. Delete actions
+    /// show the full file as removed.
+    pub fn diffs(&self) -> Vec<String> {
+        self.actions
+            .iter()
+            .filter_map(|action| {
+                let path = action.target();
+                let path_str = path.display().to_string();
+
+                if let Some(new_content) = action.proposed_content() {
+                    let old_content = if path.exists() {
+                        fs::read_to_string(path).unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+
+                    if old_content == new_content {
+                        return None;
+                    }
+
+                    let old_label = format!("a/{}", path_str);
+                    let new_label = format!("b/{}", path_str);
+                    let diff = unified_diff(&old_content, new_content, &old_label, &new_label);
+                    if diff.is_empty() {
+                        None
+                    } else {
+                        Some(diff)
+                    }
+                } else {
+                    // Delete action
+                    if path.exists() {
+                        if let Ok(content) = fs::read_to_string(path) {
+                            let old_label = format!("a/{}", path_str);
+                            let diff = unified_diff(&content, "", &old_label, "/dev/null");
+                            Some(diff)
+                        } else {
+                            Some(format!("delete {}", path_str))
+                        }
+                    } else {
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
     /// Checks all actions for conflicts.
     pub fn check_conflicts(&self, db: &FileDB) -> Result<()> {
         for action in &self.actions {
@@ -273,13 +337,193 @@ impl Transaction {
     }
 }
 
+/// Produces a unified diff between two strings.
+fn unified_diff(old: &str, new: &str, old_label: &str, new_label: &str) -> String {
+    let old_lines: Vec<&str> = if old.is_empty() {
+        Vec::new()
+    } else {
+        old.lines().collect()
+    };
+    let new_lines: Vec<&str> = if new.is_empty() {
+        Vec::new()
+    } else {
+        new.lines().collect()
+    };
+
+    // Simple line-by-line diff using longest common subsequence
+    let lcs = lcs_table(&old_lines, &new_lines);
+    let mut hunks = collect_hunks(&old_lines, &new_lines, &lcs, 3);
+
+    if hunks.is_empty() {
+        return String::new();
+    }
+
+    let mut output = Vec::new();
+    output.push(format!("--- {}", old_label));
+    output.push(format!("+++ {}", new_label));
+
+    for hunk in &mut hunks {
+        output.push(format!(
+            "@@ -{},{} +{},{} @@",
+            hunk.old_start + 1,
+            hunk.old_count,
+            hunk.new_start + 1,
+            hunk.new_count,
+        ));
+        output.append(&mut hunk.lines);
+    }
+
+    output.join("\n")
+}
+
+struct DiffHunk {
+    old_start: usize,
+    old_count: usize,
+    new_start: usize,
+    new_count: usize,
+    lines: Vec<String>,
+}
+
+fn lcs_table(old: &[&str], new: &[&str]) -> Vec<Vec<usize>> {
+    let m = old.len();
+    let n = new.len();
+    let mut table = vec![vec![0usize; n + 1]; m + 1];
+
+    for i in 1..=m {
+        for j in 1..=n {
+            if old[i - 1] == new[j - 1] {
+                table[i][j] = table[i - 1][j - 1] + 1;
+            } else {
+                table[i][j] = table[i - 1][j].max(table[i][j - 1]);
+            }
+        }
+    }
+
+    table
+}
+
+fn collect_hunks(
+    old: &[&str],
+    new: &[&str],
+    lcs: &[Vec<usize>],
+    context: usize,
+) -> Vec<DiffHunk> {
+    // Build edit script from LCS table
+    let mut edits: Vec<(char, usize, usize)> = Vec::new(); // (type, old_idx, new_idx)
+    let mut i = old.len();
+    let mut j = new.len();
+
+    while i > 0 || j > 0 {
+        if i > 0 && j > 0 && old[i - 1] == new[j - 1] {
+            edits.push((' ', i - 1, j - 1));
+            i -= 1;
+            j -= 1;
+        } else if j > 0 && (i == 0 || lcs[i][j - 1] >= lcs[i - 1][j]) {
+            edits.push(('+', i, j - 1));
+            j -= 1;
+        } else {
+            edits.push(('-', i - 1, j));
+            i -= 1;
+        }
+    }
+
+    edits.reverse();
+
+    // Find changed regions and create hunks with context
+    let mut change_indices: Vec<usize> = Vec::new();
+    for (idx, (edit_type, _, _)) in edits.iter().enumerate() {
+        if *edit_type != ' ' {
+            change_indices.push(idx);
+        }
+    }
+
+    if change_indices.is_empty() {
+        return Vec::new();
+    }
+
+    // Group changes into hunks (merge if within 2*context lines of each other)
+    let mut groups: Vec<(usize, usize)> = Vec::new(); // (first_change_idx, last_change_idx)
+    let mut group_start = change_indices[0];
+    let mut group_end = change_indices[0];
+
+    for &ci in &change_indices[1..] {
+        if ci - group_end <= 2 * context {
+            group_end = ci;
+        } else {
+            groups.push((group_start, group_end));
+            group_start = ci;
+            group_end = ci;
+        }
+    }
+    groups.push((group_start, group_end));
+
+    // Build hunks
+    let mut hunks = Vec::new();
+    for (gs, ge) in groups {
+        let hunk_start = gs.saturating_sub(context);
+        let hunk_end = (ge + context + 1).min(edits.len());
+
+        let mut lines = Vec::new();
+        let mut old_start = usize::MAX;
+        let mut new_start = usize::MAX;
+        let mut old_count = 0;
+        let mut new_count = 0;
+
+        for edit in &edits[hunk_start..hunk_end] {
+            match edit.0 {
+                ' ' => {
+                    if old_start == usize::MAX {
+                        old_start = edit.1;
+                        new_start = edit.2;
+                    }
+                    lines.push(format!(" {}", old[edit.1]));
+                    old_count += 1;
+                    new_count += 1;
+                }
+                '-' => {
+                    if old_start == usize::MAX {
+                        old_start = edit.1;
+                        new_start = edit.2;
+                    }
+                    lines.push(format!("-{}", old[edit.1]));
+                    old_count += 1;
+                }
+                '+' => {
+                    if old_start == usize::MAX {
+                        old_start = edit.1;
+                        new_start = edit.2;
+                    }
+                    lines.push(format!("+{}", new[edit.2]));
+                    new_count += 1;
+                }
+                _ => {}
+            }
+        }
+
+        hunks.push(DiffHunk {
+            old_start,
+            old_count,
+            new_start,
+            new_count,
+            lines,
+        });
+    }
+
+    hunks
+}
+
+/// Counter for unique temp file names.
+static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 /// Writes content to a file atomically using a temp file.
 fn atomic_write(path: &Path, content: &str) -> io::Result<()> {
-    // Create temp file in the same directory
+    // Create temp file in the same directory with unique name
     let parent = path.parent().unwrap_or(Path::new("."));
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
     let temp_path = parent.join(format!(
-        ".entangled-tmp-{}",
-        std::process::id()
+        ".entangled-tmp-{}-{}",
+        std::process::id(),
+        counter,
     ));
 
     // Write to temp file

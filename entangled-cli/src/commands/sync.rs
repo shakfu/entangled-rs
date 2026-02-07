@@ -1,13 +1,19 @@
 //! Sync command implementation.
 
 use entangled::errors::Result;
-use entangled::interface::{stitch_documents, tangle_documents, Context};
+use entangled::interface::{stitch_documents, sync_documents, tangle_documents, Context};
 
 /// Options for the sync command.
 #[derive(Debug, Clone, Default)]
 pub struct SyncOptions {
     /// Force overwrite even if files have been modified externally.
     pub force: bool,
+    /// Dry run - show what would be done without doing it.
+    pub dry_run: bool,
+    /// Show unified diffs of what would change.
+    pub diff: bool,
+    /// Suppress normal output.
+    pub quiet: bool,
 }
 
 /// Executes the sync command.
@@ -16,30 +22,51 @@ pub struct SyncOptions {
 pub fn sync(ctx: &mut Context, options: SyncOptions) -> Result<()> {
     tracing::info!("Synchronizing documents...");
 
-    // First stitch any changes from tangled files
-    let stitch_tx = stitch_documents(ctx)?;
-    if !stitch_tx.is_empty() {
-        if options.force {
-            stitch_tx.execute_force(&mut ctx.filedb)?;
-        } else {
-            stitch_tx.execute(&mut ctx.filedb)?;
+    // For diff/dry-run we need to compute transactions without executing
+    if options.diff || options.dry_run {
+        let stitch_tx = stitch_documents(ctx)?;
+        let tangle_tx = tangle_documents(ctx)?;
+
+        if options.diff {
+            for diff in stitch_tx.diffs() {
+                println!("{}", diff);
+            }
+            for diff in tangle_tx.diffs() {
+                println!("{}", diff);
+            }
+            return Ok(());
         }
+
+        // dry_run
+        let stitch_count = stitch_tx.len();
+        let tangle_count = tangle_tx.len();
+        if stitch_count + tangle_count == 0 {
+            if !options.quiet {
+                println!("Nothing to do.");
+            }
+        } else {
+            if stitch_count > 0 {
+                println!("Would stitch {} files:", stitch_count);
+                for desc in stitch_tx.describe() {
+                    println!("  {}", desc);
+                }
+            }
+            if tangle_count > 0 {
+                println!("Would tangle {} files:", tangle_count);
+                for desc in tangle_tx.describe() {
+                    println!("  {}", desc);
+                }
+            }
+        }
+        return Ok(());
     }
 
-    // Then tangle all documents
-    let tangle_tx = tangle_documents(ctx)?;
-    if !tangle_tx.is_empty() {
-        if options.force {
-            tangle_tx.execute_force(&mut ctx.filedb)?;
-        } else {
-            tangle_tx.execute(&mut ctx.filedb)?;
-        }
+    // Normal execution -- delegate to library
+    sync_documents(ctx, options.force)?;
+
+    if !options.quiet {
+        println!("Synchronization complete.");
     }
-
-    // Save file database
-    ctx.save_filedb()?;
-
-    println!("Synchronization complete.");
 
     Ok(())
 }

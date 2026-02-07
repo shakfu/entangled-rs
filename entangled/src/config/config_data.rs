@@ -1,7 +1,7 @@
 //! Configuration data structures.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -72,7 +72,11 @@ fn default_version() -> String {
 }
 
 fn default_source_patterns() -> Vec<String> {
-    vec!["**/*.md".to_string()]
+    vec![
+        "**/*.md".to_string(),
+        "**/*.qmd".to_string(),
+        "**/*.Rmd".to_string(),
+    ]
 }
 
 fn default_filedb_path() -> PathBuf {
@@ -105,6 +109,7 @@ impl Default for Config {
 
 impl Config {
     /// Creates a new default configuration.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -125,8 +130,8 @@ impl Config {
     }
 
     /// Returns the output directory, if configured.
-    pub fn output_dir(&self) -> Option<&PathBuf> {
-        self.output_dir.as_ref()
+    pub fn output_dir(&self) -> Option<&Path> {
+        self.output_dir.as_deref()
     }
 }
 
@@ -161,57 +166,9 @@ pub struct HooksConfig {
     #[serde(default)]
     pub spdx_license: bool,
 
-    /// Enable Quarto attributes parsing.
-    #[serde(default)]
-    pub quarto_attributes: bool,
-
-    /// Build hook configuration.
-    #[serde(default)]
-    pub build: Option<BuildHookConfig>,
-
-    /// Brei task hook configuration.
-    #[serde(default)]
-    pub brei: Option<BreiHookConfig>,
-}
-
-/// Build hook configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BuildHookConfig {
-    /// Output file for Makefile.
-    #[serde(default = "default_makefile")]
-    pub makefile: PathBuf,
-}
-
-fn default_makefile() -> PathBuf {
-    PathBuf::from("Makefile.entangled")
-}
-
-impl Default for BuildHookConfig {
-    fn default() -> Self {
-        Self {
-            makefile: default_makefile(),
-        }
-    }
-}
-
-/// Brei task hook configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BreiHookConfig {
-    /// Output file for Brei tasks.
-    #[serde(default = "default_brei_output")]
-    pub output: PathBuf,
-}
-
-fn default_brei_output() -> PathBuf {
-    PathBuf::from(".entangled/tasks.json")
-}
-
-impl Default for BreiHookConfig {
-    fn default() -> Self {
-        Self {
-            output: default_brei_output(),
-        }
-    }
+    /// Absorb unknown hook keys (forward-compat with Python Entangled configs).
+    #[serde(default, flatten)]
+    pub extra: HashMap<String, toml::Value>,
 }
 
 #[cfg(test)]
@@ -222,7 +179,7 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.version, "2.0");
-        assert_eq!(config.source_patterns, vec!["**/*.md"]);
+        assert_eq!(config.source_patterns, vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]);
         assert_eq!(config.annotation, AnnotationMethod::Standard);
     }
 

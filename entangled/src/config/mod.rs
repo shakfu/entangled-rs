@@ -12,7 +12,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub use annotation_method::AnnotationMethod;
-pub use config_data::{BreiHookConfig, BuildHookConfig, Config, HooksConfig, WatchConfig};
+pub use config_data::{Config, HooksConfig, WatchConfig};
 pub use config_update::ConfigUpdate;
 pub use language::{Comment, Language};
 pub use markers::{
@@ -135,7 +135,7 @@ annotation = "naked"
         let dir = tempdir().unwrap();
         let config = read_config(dir.path()).unwrap();
         assert_eq!(config.version, "2.0");
-        assert_eq!(config.source_patterns, vec!["**/*.md"]);
+        assert_eq!(config.source_patterns, vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]);
     }
 
     #[test]

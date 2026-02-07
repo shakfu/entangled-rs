@@ -107,6 +107,8 @@ cat hello.py
 | `watch` | Watch for changes and sync automatically |
 | `status` | Show status of tracked files |
 | `reset` | Reset the file database |
+| `init` | Initialize a new entangled project |
+| `locate` | Map a tangled file line back to its markdown source |
 
 ### Global Options
 
@@ -116,6 +118,7 @@ cat hello.py
 | `-C, --directory <DIR>` | Working directory |
 | `-s, --style <STYLE>` | Code block syntax style (overrides config) |
 | `-v, --verbose` | Verbose output |
+| `-q, --quiet` | Suppress normal output |
 | `-h, --help` | Print help |
 | `-V, --version` | Print version |
 
@@ -131,6 +134,39 @@ entangled tangle [OPTIONS] [FILES...]
 |--------|-------------|
 | `-f, --force` | Force overwrite modified files |
 | `-n, --dry-run` | Show what would be done |
+| `-d, --diff` | Show unified diffs of what would change |
+
+### Stitch Options
+
+```bash
+entangled stitch [OPTIONS] [FILES...]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --force` | Force overwrite modified files |
+| `-n, --dry-run` | Show what would be done |
+| `-d, --diff` | Show unified diffs of what would change |
+
+### Sync Options
+
+```bash
+entangled sync [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --force` | Force overwrite modified files |
+| `-n, --dry-run` | Show what would be done |
+| `-d, --diff` | Show unified diffs of what would change |
+
+### Locate Options
+
+```bash
+entangled locate <FILE:LINE>
+```
+
+Maps a line in a tangled output file back to its markdown source location. Useful for navigating from compiler errors to the originating documentation.
 
 ### Watch Options
 
@@ -254,7 +290,7 @@ import os
 
 ## Configuration
 
-Create `entangled.toml` in your project root:
+Create `entangled.toml` (or `.entangled.toml`) in your project root. Both file names are recognized and searched for in the current directory and its parents.
 
 ```toml
 # Configuration version
@@ -262,6 +298,9 @@ version = "2.0"
 
 # Glob patterns for source markdown files
 source_patterns = ["**/*.md", "**/*.qmd", "**/*.Rmd"]
+
+# Optional output directory prefix for tangled files
+# output_dir = "src"
 
 # Code block syntax style for .md files
 # Options: "entangled-rs" (default), "pandoc", "quarto", "knitr"
@@ -284,6 +323,11 @@ filedb_path = ".entangled/filedb.json"
 # Watch configuration
 [watch]
 debounce_ms = 100
+
+# Hook configuration
+[hooks]
+shebang = true        # Extract shebangs from code and re-add after tangling
+spdx_license = true   # Extract SPDX license headers and re-add after tangling
 
 # Custom language definitions
 [[languages]]
@@ -309,12 +353,27 @@ Note: `.qmd` and `.Rmd` files always use their native styles regardless of confi
 | `naked` | No annotations, raw code only |
 | `supplemental` | Annotations for documentation output |
 
+### Output Directory
+
+When `output_dir` is set, all tangled file paths are prefixed with the specified directory. For example, with `output_dir = "src"`, a code block with `file=main.py` would be written to `src/main.py`.
+
 ### Namespace Default
 
 | Value | Behavior |
 |-------|----------|
 | `file` | IDs prefixed with filename: `file.md#name` |
 | `none` | IDs used as-is: `name` |
+
+### Hooks
+
+Hooks process code blocks during tangling. Enable them in the `[hooks]` config section:
+
+| Hook | Config Key | Description |
+|------|-----------|-------------|
+| Shebang | `hooks.shebang = true` | Strips `#!/...` lines from markdown code blocks and re-inserts them at the top of the tangled output file |
+| SPDX License | `hooks.spdx_license = true` | Strips `// SPDX-License-Identifier: ...` headers from markdown and re-inserts them at the top of tangled output |
+
+Hooks are useful when you want the shebang or license header to appear in the final file but not clutter every code block in the documentation.
 
 ## Annotation Format
 
@@ -339,11 +398,16 @@ Comment prefix varies by language (`//`, `--`, `/* */`, etc.).
 
 This project is organized as a Cargo workspace:
 
-| Crate | Type | Description |
-|-------|------|-------------|
-| `entangled` | Library | Core library with no CLI dependencies |
-| `entangled-cli` | Binary | Command-line interface |
-| `pyentangled` | Python | Python bindings and CLI (PyO3/maturin) |
+| Crate | Type | Edition | Description |
+|-------|------|---------|-------------|
+| `entangled` | Library | 2021 | Core library with no CLI dependencies |
+| `entangled-cli` | Binary | 2021 | Command-line interface |
+| `pyentangled` | Python | 2024 | Python bindings and CLI (PyO3/maturin) |
+
+### Rust Version Requirements
+
+- `entangled` and `entangled-cli` use Rust edition 2021 and should compile with any recent stable Rust toolchain.
+- `pyentangled` uses Rust edition 2024, requiring **Rust 1.85 or later**. This crate is excluded from default workspace builds (`cargo build` / `cargo test` skip it). Build it with `cd pyentangled && maturin develop`.
 
 ## Documentation
 
@@ -357,13 +421,13 @@ This project is organized as a Cargo workspace:
 
 ```rust
 use entangled::interface::Context;
-use entangled::interface::{tangle_documents, stitch_documents, sync_documents};
+use entangled::interface::tangle_documents;
 
 // Create context from current directory
 let mut ctx = Context::from_current_dir()?;
 
 // Run tangle
-let transaction = tangle_documents(&mut ctx)?;
+let transaction = tangle_documents(&ctx)?;
 transaction.execute(&mut ctx.filedb)?;
 ctx.save_filedb()?;
 ```
@@ -517,15 +581,25 @@ Entangled tracks file states in `.entangled/filedb.json`:
 
 This enables conflict detection when files are modified externally.
 
-## Comparison with Python Entangled
+## Migrating from Python Entangled
 
-This Rust implementation is a translation of the [Python Entangled](https://github.com/entangled/entangled) project with:
+entangled-rs is designed as a drop-in replacement for the [Python Entangled](https://github.com/entangled/entangled) project.
 
-- Full feature parity for core functionality
-- Compatible configuration format (`entangled.toml`)
-- Compatible file database format (`.entangled/filedb.json`)
-- Same annotation marker format (`# ~/~ begin/end`)
-- Improved performance
+### What stays the same
+
+- **Configuration format**: `entangled.toml` files are compatible. The same keys (`version`, `source_patterns`, `annotation`, `namespace_default`, `languages`, `watch`, `hooks`) are recognized.
+- **File database**: `.entangled/filedb.json` uses the same format. You can switch between implementations without resetting.
+- **Annotation markers**: The `# ~/~ begin/end` format is identical, so tangled files produced by either implementation are interchangeable.
+- **Code block syntax**: All four styles (entangled, Pandoc, Quarto, Knitr) are supported.
+
+### What's different
+
+- **Performance**: 5-42x faster than the Python implementation (see [benchmarks](docs/benchmarks.md)).
+- **Default style**: entangled-rs defaults to its own native style (`#name file=path`). Set `style = "pandoc"` in config to match the Python default.
+- **Additional commands**: `init`, `locate`, `status`, and `reset` are new.
+- **Additional flags**: `--diff`, `--quiet`, `--dry-run` (on sync) are new.
+- **Hook activation**: Hooks (`shebang`, `spdx_license`) must be explicitly enabled in config. The `build` and `brei` hooks from Python Entangled are not yet implemented.
+- **No daemon mode**: The Python version supports `entangled daemon`. Use `entangled watch` instead (equivalent behavior).
 
 ## License
 

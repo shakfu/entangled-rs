@@ -51,8 +51,18 @@ pub struct HookRegistry {
     hooks: Vec<Box<dyn Hook>>,
 }
 
+impl std::fmt::Debug for HookRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let names: Vec<&str> = self.hooks.iter().map(|h| h.name()).collect();
+        f.debug_struct("HookRegistry")
+            .field("hooks", &names)
+            .finish()
+    }
+}
+
 impl HookRegistry {
     /// Creates a new empty registry.
+    #[must_use]
     pub fn new() -> Self {
         Self { hooks: Vec::new() }
     }
@@ -119,8 +129,7 @@ impl HookRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ReferenceId, ReferenceName};
-    use crate::text_location::TextLocation;
+    use crate::test_utils;
 
     struct TestHook {
         prefix: String,
@@ -144,15 +153,6 @@ mod tests {
         }
     }
 
-    fn make_block() -> CodeBlock {
-        CodeBlock::new(
-            ReferenceId::first(ReferenceName::new("test")),
-            Some("python".to_string()),
-            "code".to_string(),
-            TextLocation::default(),
-        )
-    }
-
     #[test]
     fn test_registry() {
         let mut registry = HookRegistry::new();
@@ -171,7 +171,7 @@ mod tests {
             prefix: "#!/usr/bin/env python".to_string(),
         });
 
-        let block = make_block();
+        let block = test_utils::make_block("test", "code");
         let result = registry.run_post_tangle("print('hello')", &block).unwrap();
 
         assert!(result.starts_with("#!/usr/bin/env python\n"));

@@ -24,7 +24,7 @@ static END_PATTERN: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// A code block extracted from annotated source.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnotatedBlock {
     /// The reference ID.
     pub id: ReferenceId,
@@ -74,8 +74,9 @@ pub fn read_annotated_code(
                     start_line,
                     end_line: line_number,
                 });
+            } else {
+                tracing::warn!("Unmatched end marker at line {}", line_number);
             }
-            // Silently ignore unmatched end markers
         } else if let Some((_, ref indent, _, ref mut content)) = stack.last_mut() {
             // Strip the block's indent from content lines
             let stripped = if line.starts_with(indent.as_str()) {

@@ -1,5 +1,7 @@
 //! Tangle algorithm for expanding code block references.
 
+use std::collections::HashSet;
+
 use crate::config::{annotation_begin, annotation_end, Comment, Markers, REF_PATTERN};
 use crate::errors::{EntangledError, Result};
 
@@ -9,12 +11,15 @@ use super::reference_name::ReferenceName;
 /// Cycle detector for preventing infinite loops during tangling.
 #[derive(Debug, Clone, Default)]
 pub struct CycleDetector {
-    /// Stack of reference names currently being expanded.
+    /// Stack of reference names currently being expanded (for error reporting).
     stack: Vec<ReferenceName>,
+    /// Set for O(1) membership checks.
+    seen: HashSet<ReferenceName>,
 }
 
 impl CycleDetector {
     /// Creates a new cycle detector.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -23,18 +28,21 @@ impl CycleDetector {
     ///
     /// Returns an error if entering this reference would create a cycle.
     pub fn enter(&mut self, name: &ReferenceName) -> Result<()> {
-        if self.stack.contains(name) {
+        if self.seen.contains(name) {
             let mut cycle = self.stack.clone();
             cycle.push(name.clone());
             return Err(EntangledError::CycleDetected(cycle));
         }
+        self.seen.insert(name.clone());
         self.stack.push(name.clone());
         Ok(())
     }
 
     /// Exits a reference.
     pub fn exit(&mut self) {
-        self.stack.pop();
+        if let Some(name) = self.stack.pop() {
+            self.seen.remove(&name);
+        }
     }
 
     /// Returns the current depth.
@@ -98,7 +106,12 @@ pub fn tangle_annotated(
     let prefix = comment.prefix();
 
     for id in ids {
-        let block = refs.get(id).unwrap();
+        let block = refs.get(id).ok_or_else(|| {
+            EntangledError::Other(format!(
+                "Internal error: ReferenceMap has ID {} in name index but not in block storage",
+                id
+            ))
+        })?;
 
         // Add begin marker
         let begin_marker = format!(
@@ -154,17 +167,7 @@ pub fn tangle_ref(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{CodeBlock, ReferenceId};
-    use crate::text_location::TextLocation;
-
-    fn make_block(name: &str, source: &str) -> CodeBlock {
-        CodeBlock::new(
-            ReferenceId::first(ReferenceName::new(name)),
-            Some("python".to_string()),
-            source.to_string(),
-            TextLocation::default(),
-        )
-    }
+    use crate::test_utils::make_block;
 
     #[test]
     fn test_tangle_naked_simple() {

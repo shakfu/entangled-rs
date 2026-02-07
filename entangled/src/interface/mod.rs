@@ -4,4 +4,7 @@ mod context;
 mod document;
 
 pub use context::Context;
-pub use document::{stitch_documents, sync_documents, tangle_documents, Document};
+pub use document::{
+    locate_source, stitch_documents, stitch_files, sync_documents, tangle_documents, tangle_files,
+    Document, SourceLocation,
+};

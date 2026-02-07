@@ -99,22 +99,8 @@ impl Hook for SpdxLicenseHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ReferenceId, ReferenceName};
-    use crate::text_location::TextLocation;
+    use crate::test_utils;
     use std::path::PathBuf;
-
-    fn make_block(source: &str, has_target: bool) -> CodeBlock {
-        let mut block = CodeBlock::new(
-            ReferenceId::first(ReferenceName::new("test")),
-            Some("rust".to_string()),
-            source.to_string(),
-            TextLocation::default(),
-        );
-        if has_target {
-            block.target = Some(PathBuf::from("lib.rs"));
-        }
-        block
-    }
 
     #[test]
     fn test_extract_spdx_lines() {
@@ -153,7 +139,7 @@ mod tests {
     #[test]
     fn test_pre_tangle() {
         let hook = SpdxLicenseHook::new();
-        let block = make_block("// SPDX-License-Identifier: MIT\n\nfn main() {}", false);
+        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\n\nfn main() {}", "rust");
 
         let result = hook.pre_tangle(&block).unwrap().unwrap();
         assert!(!result.source.contains("SPDX"));
@@ -163,7 +149,8 @@ mod tests {
     #[test]
     fn test_post_tangle_with_target() {
         let hook = SpdxLicenseHook::new();
-        let block = make_block("// SPDX-License-Identifier: MIT\nfn main() {}", true);
+        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\nfn main() {}", "rust")
+            .with_target(PathBuf::from("lib.rs"));
 
         let result = hook.post_tangle("fn main() {}", &block).unwrap().unwrap();
         assert!(result.prefix.unwrap().contains("SPDX-License-Identifier: MIT"));
@@ -172,7 +159,7 @@ mod tests {
     #[test]
     fn test_post_tangle_without_target() {
         let hook = SpdxLicenseHook::new();
-        let block = make_block("// SPDX-License-Identifier: MIT\nfn main() {}", false);
+        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\nfn main() {}", "rust");
 
         let result = hook.post_tangle("fn main() {}", &block).unwrap();
         assert!(result.is_none());

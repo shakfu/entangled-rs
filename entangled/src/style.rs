@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 /// Code block syntax style.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum Style {
     /// Native entangled-rs style: ```python #main file=out.py
     #[default]

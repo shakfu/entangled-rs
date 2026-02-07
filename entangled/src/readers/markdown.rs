@@ -12,7 +12,7 @@ use super::delimiters::{extract_all_tokens, DelimitedToken, ExtractResult};
 use super::yaml_header::split_yaml_header;
 
 /// A parsed markdown document.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParsedDocument {
     /// The reference map containing all code blocks.
     pub refs: ReferenceMap,
@@ -24,6 +24,7 @@ pub struct ParsedDocument {
 
 impl ParsedDocument {
     /// Creates a new empty parsed document.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             refs: ReferenceMap::new(),
@@ -114,7 +115,9 @@ fn process_code_block(
     } else if let Some(file) = file_target {
         ReferenceName::from_file_path(file)
     } else {
-        unreachable!()
+        return Err(crate::errors::EntangledError::Other(
+            "Internal error: code block has neither ID nor file target after guard check".to_string(),
+        ));
     };
 
     // Build location
@@ -161,24 +164,20 @@ fn parse_by_style(
 ) -> Result<(Properties, String)> {
     match style {
         Style::EntangledRs => {
-            let props = Properties::parse(info)
-                .map_err(crate::errors::EntangledError::InvalidProperty)?;
+            let props = Properties::parse(info)?;
             Ok((props, content.to_string()))
         }
         Style::Pandoc => {
-            let props = Properties::parse_pandoc(info)
-                .map_err(crate::errors::EntangledError::InvalidProperty)?;
+            let props = Properties::parse_pandoc(info)?;
             Ok((props, content.to_string()))
         }
         Style::Knitr => {
-            let props = Properties::parse_knitr(info)
-                .map_err(crate::errors::EntangledError::InvalidProperty)?;
+            let props = Properties::parse_knitr(info)?;
             Ok((props, content.to_string()))
         }
         Style::Quarto => {
             // Extract language from info string
-            let info_props = Properties::parse_quarto_info(info)
-                .map_err(crate::errors::EntangledError::InvalidProperty)?;
+            let info_props = Properties::parse_quarto_info(info)?;
             let language = info_props.first_class();
 
             // Extract #| options from content

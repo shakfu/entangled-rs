@@ -24,7 +24,7 @@ impl ShebangHook {
         if first_line.starts_with("#!") {
             let rest_start = first_line.len();
             let rest = if content.len() > rest_start {
-                &content[rest_start..].trim_start_matches('\n')
+                content[rest_start..].trim_start_matches('\n')
             } else {
                 ""
             };
@@ -70,22 +70,7 @@ impl Hook for ShebangHook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{ReferenceId, ReferenceName};
-    use crate::text_location::TextLocation;
-    use std::path::PathBuf;
-
-    fn make_block(source: &str, has_target: bool) -> CodeBlock {
-        let mut block = CodeBlock::new(
-            ReferenceId::first(ReferenceName::new("test")),
-            Some("python".to_string()),
-            source.to_string(),
-            TextLocation::default(),
-        );
-        if has_target {
-            block.target = Some(PathBuf::from("script.py"));
-        }
-        block
-    }
+    use crate::test_utils;
 
     #[test]
     fn test_extract_shebang() {
@@ -105,7 +90,7 @@ mod tests {
     #[test]
     fn test_pre_tangle() {
         let hook = ShebangHook::new();
-        let block = make_block("#!/bin/bash\necho hello", false);
+        let block = test_utils::make_block("test", "#!/bin/bash\necho hello");
 
         let result = hook.pre_tangle(&block).unwrap().unwrap();
         assert_eq!(result.source, "echo hello");
@@ -115,7 +100,7 @@ mod tests {
     #[test]
     fn test_post_tangle_with_target() {
         let hook = ShebangHook::new();
-        let block = make_block("#!/usr/bin/env python\nprint('hello')", true);
+        let block = test_utils::make_block_with_target("test", "#!/usr/bin/env python\nprint('hello')", "script.py");
 
         let result = hook.post_tangle("print('hello')", &block).unwrap().unwrap();
         assert_eq!(result.prefix, Some("#!/usr/bin/env python".to_string()));
@@ -124,7 +109,7 @@ mod tests {
     #[test]
     fn test_post_tangle_without_target() {
         let hook = ShebangHook::new();
-        let block = make_block("#!/usr/bin/env python\nprint('hello')", false);
+        let block = test_utils::make_block("test", "#!/usr/bin/env python\nprint('hello')");
 
         // No target, so shebang should not be added
         let result = hook.post_tangle("print('hello')", &block).unwrap();

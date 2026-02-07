@@ -3,6 +3,11 @@
 //! Parses property strings like `.python #main file=output.py mode=0755`
 //! into structured Property values.
 
+mod knitr;
+mod quarto;
+
+pub use quarto::{extract_quarto_options, QuartoOptions};
+
 use nom::{
     IResult, Parser,
     branch::alt,
@@ -166,11 +171,15 @@ fn parse_properties_inner(input: &str) -> IResult<&str, Vec<Property>> {
 }
 
 /// Parse a property string into a list of properties.
-pub fn parse_properties(input: &str) -> Result<Vec<Property>, String> {
+pub fn parse_properties(input: &str) -> Result<Vec<Property>, crate::errors::EntangledError> {
     match parse_properties_inner(input) {
         Ok(("", props)) => Ok(props),
-        Ok((remaining, _)) => Err(format!("Unexpected input: '{}'", remaining)),
-        Err(e) => Err(format!("Parse error: {}", e)),
+        Ok((remaining, _)) => Err(crate::errors::EntangledError::InvalidProperty(
+            format!("Unexpected input: '{}'", remaining),
+        )),
+        Err(e) => Err(crate::errors::EntangledError::InvalidProperty(
+            format!("Parse error: {}", e),
+        )),
     }
 }
 
@@ -188,7 +197,7 @@ impl Properties {
     }
 
     /// Parses a property string.
-    pub fn parse(input: &str) -> Result<Self, String> {
+    pub fn parse(input: &str) -> crate::errors::Result<Self> {
         Ok(Self::new(parse_properties(input)?))
     }
 
@@ -232,7 +241,7 @@ impl Properties {
 
     /// Parses a Pandoc-style info string: `{.python #main file=out.py}`.
     /// Strips outer braces and uses the standard parser.
-    pub fn parse_pandoc(input: &str) -> Result<Self, String> {
+    pub fn parse_pandoc(input: &str) -> crate::errors::Result<Self> {
         let trimmed = input.trim();
         let inner = strip_braces(trimmed);
         Self::parse(inner)
@@ -240,15 +249,13 @@ impl Properties {
 
     /// Parses a knitr-style info string: `{python, label=main, file=out.py}`.
     /// Handles comma-separated options and converts `label=x` to an ID.
-    pub fn parse_knitr(input: &str) -> Result<Self, String> {
-        let trimmed = input.trim();
-        let inner = strip_braces(trimmed);
-        parse_knitr_properties(inner)
+    pub fn parse_knitr(input: &str) -> crate::errors::Result<Self> {
+        knitr::parse_knitr(input)
     }
 
     /// Parses a Quarto-style info string: `{python}`.
     /// Only extracts the language; options come from content.
-    pub fn parse_quarto_info(input: &str) -> Result<Self, String> {
+    pub fn parse_quarto_info(input: &str) -> crate::errors::Result<Self> {
         let trimmed = input.trim();
         let inner = strip_braces(trimmed);
         let lang = inner.trim();
@@ -261,7 +268,7 @@ impl Properties {
 }
 
 /// Strip outer braces from a string like `{content}`.
-fn strip_braces(s: &str) -> &str {
+pub(crate) fn strip_braces(s: &str) -> &str {
     let s = s.trim();
     if s.starts_with('{') && s.ends_with('}') {
         &s[1..s.len() - 1]
@@ -270,188 +277,14 @@ fn strip_braces(s: &str) -> &str {
     }
 }
 
-/// Parse knitr-style comma-separated properties.
-/// Format: `python, label=main, file=out.py, echo=FALSE`
-fn parse_knitr_properties(input: &str) -> Result<Properties, String> {
-    let mut items = Vec::new();
-    let trimmed = input.trim();
-
-    if trimmed.is_empty() {
-        return Ok(Properties::new(items));
-    }
-
-    // Split by comma, but handle quoted values
-    let parts = split_knitr_options(trimmed);
-
-    for (i, part) in parts.iter().enumerate() {
-        let part = part.trim();
-        if part.is_empty() {
-            continue;
-        }
-
-        if i == 0 && !part.contains('=') {
-            // First item without `=` is the language
-            items.push(Property::Class(part.to_string()));
-        } else if let Some((key, value)) = part.split_once('=') {
-            let key = key.trim();
-            let value = value.trim();
-            // Strip quotes if present
-            let value = strip_quotes(value);
-
-            // Convert knitr-specific keys
-            match key {
-                "label" => items.push(Property::Id(value.to_string())),
-                _ => items.push(Property::Attribute(key.to_string(), value.to_string())),
-            }
-        } else {
-            // Boolean flag without value (e.g., `eval` is treated as `eval=TRUE`)
-            items.push(Property::Attribute(part.to_string(), "true".to_string()));
-        }
-    }
-
-    Ok(Properties::new(items))
-}
-
-/// Split knitr options by comma, respecting quoted values.
-fn split_knitr_options(input: &str) -> Vec<String> {
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut in_quotes = false;
-    let mut chars = input.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        match c {
-            '"' if !in_quotes => {
-                in_quotes = true;
-                current.push(c);
-            }
-            '"' if in_quotes => {
-                in_quotes = false;
-                current.push(c);
-            }
-            ',' if !in_quotes => {
-                parts.push(current.trim().to_string());
-                current = String::new();
-            }
-            _ => current.push(c),
-        }
-    }
-
-    if !current.is_empty() {
-        parts.push(current.trim().to_string());
-    }
-
-    parts
-}
-
 /// Strip surrounding quotes from a value.
-fn strip_quotes(s: &str) -> &str {
+pub(crate) fn strip_quotes(s: &str) -> &str {
     let s = s.trim();
     if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
         &s[1..s.len() - 1]
     } else {
         s
     }
-}
-
-/// Quarto options extracted from `#|` comment lines.
-#[derive(Debug, Clone, Default)]
-pub struct QuartoOptions {
-    /// The label/ID for the code block.
-    pub label: Option<String>,
-    /// The output file target.
-    pub file: Option<String>,
-    /// Other options as key-value pairs.
-    pub other: Vec<(String, String)>,
-}
-
-impl QuartoOptions {
-    /// Creates a new empty QuartoOptions.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Checks if any options are set.
-    pub fn is_empty(&self) -> bool {
-        self.label.is_none() && self.file.is_none() && self.other.is_empty()
-    }
-
-    /// Sets an option by key.
-    pub fn set(&mut self, key: &str, value: String) {
-        match key {
-            "label" => self.label = Some(value),
-            "file" => self.file = Some(value),
-            _ => self.other.push((key.to_string(), value)),
-        }
-    }
-
-    /// Converts to Properties, optionally with a language.
-    pub fn to_properties(&self, language: Option<&str>) -> Properties {
-        let mut items = Vec::new();
-
-        if let Some(lang) = language {
-            items.push(Property::Class(lang.to_string()));
-        }
-
-        if let Some(ref label) = self.label {
-            items.push(Property::Id(label.clone()));
-        }
-
-        if let Some(ref file) = self.file {
-            items.push(Property::Attribute("file".to_string(), file.clone()));
-        }
-
-        for (key, value) in &self.other {
-            items.push(Property::Attribute(key.clone(), value.clone()));
-        }
-
-        Properties::new(items)
-    }
-}
-
-/// Extract `#|` options from Quarto-style code block content.
-///
-/// Returns the extracted options and the remaining content (with #| lines removed).
-pub fn extract_quarto_options(content: &str) -> (QuartoOptions, String) {
-    let mut options = QuartoOptions::new();
-    let mut remaining_lines = Vec::new();
-
-    for line in content.lines() {
-        let trimmed = line.trim_start();
-        if let Some(rest) = trimmed.strip_prefix("#|") {
-            // Parse the option: "key: value" or "key=value"
-            let rest = rest.trim();
-            if let Some((key, value)) = parse_quarto_option_line(rest) {
-                options.set(&key, value);
-            }
-        } else {
-            remaining_lines.push(line);
-        }
-    }
-
-    (options, remaining_lines.join("\n"))
-}
-
-/// Parse a single Quarto option line (after the `#|` prefix).
-/// Supports both `key: value` (YAML) and `key=value` formats.
-fn parse_quarto_option_line(line: &str) -> Option<(String, String)> {
-    // Try YAML-style "key: value" first
-    if let Some((key, value)) = line.split_once(':') {
-        let key = key.trim();
-        let value = value.trim();
-        if !key.is_empty() {
-            return Some((key.to_string(), strip_quotes(value).to_string()));
-        }
-    }
-    // Try "key=value" format
-    if let Some((key, value)) = line.split_once('=') {
-        let key = key.trim();
-        let value = value.trim();
-        if !key.is_empty() {
-            return Some((key.to_string(), strip_quotes(value).to_string()));
-        }
-    }
-    None
 }
 
 #[cfg(test)]

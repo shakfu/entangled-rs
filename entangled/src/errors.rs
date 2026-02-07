@@ -39,7 +39,7 @@ pub enum EntangledError {
     #[error("Unknown language: {0}")]
     UnknownLanguage(String),
 
-    #[error("File conflict: {path} has been modified externally")]
+    #[error("File conflict: {path} has been modified externally (use --force to overwrite)")]
     FileConflict { path: PathBuf },
 
     #[error("Transaction error: {0}")]
@@ -62,6 +62,37 @@ pub enum EntangledError {
 
     #[error("{0}")]
     Other(String),
+}
+
+impl EntangledError {
+    /// Returns a distinct exit code for this error category.
+    ///
+    /// - 1: file conflict (user can retry with `--force`)
+    /// - 2: configuration or parse error
+    /// - 3: I/O error
+    /// - 4: reference error (not found, cycle, duplicate)
+    /// - 5: other / internal error
+    pub fn exit_code(&self) -> u8 {
+        match self {
+            Self::FileConflict { .. } => 1,
+            Self::Config(_)
+            | Self::TomlParse(_)
+            | Self::JsonParse(_)
+            | Self::YamlParse(_)
+            | Self::InvalidProperty(_)
+            | Self::MissingProperty(_)
+            | Self::GlobPattern(_) => 2,
+            Self::Io(_) | Self::Watch(_) => 3,
+            Self::ReferenceNotFound(_)
+            | Self::CycleDetected(_)
+            | Self::DuplicateReference(_)
+            | Self::UnknownLanguage(_) => 4,
+            Self::Parse { .. }
+            | Self::Transaction(_)
+            | Self::Regex(_)
+            | Self::Other(_) => 5,
+        }
+    }
 }
 
 /// Result type alias for Entangled operations.

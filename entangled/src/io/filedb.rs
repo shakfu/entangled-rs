@@ -27,6 +27,7 @@ fn default_version() -> String {
 
 impl FileDB {
     /// Creates a new empty file database.
+    #[must_use]
     pub fn new() -> Self {
         Self {
             files: HashMap::new(),

@@ -14,12 +14,12 @@
 //!
 //! ```no_run
 //! use entangled::interface::Context;
-//! use entangled::interface::{tangle_documents, stitch_documents, sync_documents};
+//! use entangled::interface::tangle_documents;
 //!
-//! let mut ctx = Context::from_current_dir().unwrap();
-//! let transaction = tangle_documents(&mut ctx).unwrap();
-//! transaction.execute(&mut ctx.filedb).unwrap();
-//! ctx.save_filedb().unwrap();
+//! let ctx = Context::from_current_dir().unwrap();
+//! let transaction = tangle_documents(&ctx).unwrap();
+//! // transaction.execute(&mut ctx.filedb).unwrap();
+//! // ctx.save_filedb().unwrap();
 //! ```
 
 pub mod config;
@@ -31,6 +31,9 @@ pub mod model;
 pub mod readers;
 pub mod style;
 pub mod text_location;
+
+#[cfg(test)]
+pub(crate) mod test_utils;
 
 // Re-export commonly used types
 pub use config::Config;

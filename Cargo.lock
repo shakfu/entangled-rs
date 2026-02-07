@@ -343,6 +343,7 @@ name = "entangled"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "clap",
  "criterion",
  "glob",
  "hex",
@@ -370,8 +371,11 @@ dependencies = [
  "chrono",
  "clap",
  "entangled",
+ "glob",
  "notify",
+ "serde_json",
  "tempfile",
+ "toml",
  "tracing",
  "tracing-subscriber",
 ]

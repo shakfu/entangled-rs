@@ -1,0 +1,7 @@
+- id: entangled-check
+  name: Check tangled files are up-to-date
+  entry: entangled tangle --dry-run
+  language: system
+  pass_filenames: false
+  always_run: true
+  description: Verifies that tangled output files match their markdown sources.

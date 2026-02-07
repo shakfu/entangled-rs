@@ -1,9 +1,11 @@
 //! Built-in language templates.
 
+use once_cell::sync::Lazy;
+
 use super::language::{Comment, Language};
 
-/// Creates the list of built-in language configurations.
-pub fn builtin_languages() -> Vec<Language> {
+/// Built-in language configurations, lazily initialized.
+static BUILTIN_LANGUAGES: Lazy<Vec<Language>> = Lazy::new(|| {
     vec![
         // C-style languages
         Language::new("c", Comment::line("//"))
@@ -93,13 +95,19 @@ pub fn builtin_languages() -> Vec<Language> {
         Language::new("verilog", Comment::line("//"))
             .with_identifiers(vec!["v".to_string(), "sv".to_string()]),
     ]
+});
+
+/// Returns the list of built-in language configurations.
+pub fn builtin_languages() -> &'static [Language] {
+    &BUILTIN_LANGUAGES
 }
 
 /// Find a language by name or identifier.
 pub fn find_language(identifier: &str) -> Option<Language> {
     builtin_languages()
-        .into_iter()
+        .iter()
         .find(|lang| lang.matches(identifier))
+        .cloned()
 }
 
 #[cfg(test)]

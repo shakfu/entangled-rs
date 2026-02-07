@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 use super::stat::{FileData, Stat};
 
 /// Trait for file system operations, allowing both real and virtual implementations.
-pub trait FileCache: Send + Sync {
+pub trait FileCache: Send + Sync + std::fmt::Debug {
     /// Reads the contents of a file.
     fn read(&self, path: &Path) -> io::Result<String>;
 

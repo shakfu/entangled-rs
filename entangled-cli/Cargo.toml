@@ -7,9 +7,12 @@ license = "MIT"
 authors = ["Entangled Contributors"]
 
 [dependencies]
-entangled = { path = "../entangled" }
+entangled = { path = "../entangled", features = ["clap"] }
 clap = { version = "4", features = ["derive"] }
+glob = "0.3"
 notify = "7"
+serde_json = "1"
+toml = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

@@ -1,7 +1,8 @@
 //! Reference map with dual-index for code block lookup.
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 
@@ -12,13 +13,16 @@ use crate::errors::{EntangledError, Result};
 
 /// A map of code blocks with dual-index lookup.
 ///
-/// - Primary index: `IndexMap<ReferenceId, CodeBlock>` (preserves insertion order)
+/// - Primary index: `IndexMap<ReferenceId, Arc<CodeBlock>>` (preserves insertion order)
 /// - Secondary index: `HashMap<ReferenceName, Vec<ReferenceId>>` (name lookup)
 /// - Targets: `HashMap<PathBuf, ReferenceName>` (output file registry)
+///
+/// Blocks are stored behind `Arc` to allow cheap cloning when combining
+/// reference maps from multiple documents during tangle.
 #[derive(Debug, Clone, Default)]
 pub struct ReferenceMap {
     /// Primary storage: ID -> CodeBlock (insertion order preserved).
-    blocks: IndexMap<ReferenceId, CodeBlock>,
+    blocks: IndexMap<ReferenceId, Arc<CodeBlock>>,
 
     /// Name index: Name -> list of IDs with that name.
     name_index: HashMap<ReferenceName, Vec<ReferenceId>>,
@@ -32,6 +36,7 @@ pub struct ReferenceMap {
 
 impl ReferenceMap {
     /// Creates a new empty reference map.
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
@@ -60,13 +65,20 @@ impl ReferenceMap {
             .push(id.clone());
 
         // Insert into primary storage
-        self.blocks.insert(id.clone(), block);
+        self.blocks.insert(id.clone(), Arc::new(block));
 
         id
     }
 
     /// Inserts a code block with a specific ID (for stitching).
     pub fn insert_with_id(&mut self, id: ReferenceId, block: CodeBlock) {
+        self.insert_arc_with_id(id, Arc::new(block));
+    }
+
+    /// Inserts an `Arc<CodeBlock>` with a specific ID.
+    ///
+    /// This avoids deep-cloning when transferring blocks between maps.
+    pub fn insert_arc_with_id(&mut self, id: ReferenceId, block: Arc<CodeBlock>) {
         // Update counter if necessary
         let count = self.counters.entry(id.name.clone()).or_insert(0);
         if id.count >= *count {
@@ -90,19 +102,19 @@ impl ReferenceMap {
 
     /// Gets a code block by its ID.
     pub fn get(&self, id: &ReferenceId) -> Option<&CodeBlock> {
-        self.blocks.get(id)
-    }
-
-    /// Gets a mutable reference to a code block by its ID.
-    pub fn get_mut(&mut self, id: &ReferenceId) -> Option<&mut CodeBlock> {
-        self.blocks.get_mut(id)
+        self.blocks.get(id).map(|arc| arc.as_ref())
     }
 
     /// Gets all code blocks with the given name.
     pub fn get_by_name(&self, name: &ReferenceName) -> Vec<&CodeBlock> {
         self.name_index
             .get(name)
-            .map(|ids| ids.iter().filter_map(|id| self.blocks.get(id)).collect())
+            .map(|ids| {
+                ids.iter()
+                    .filter_map(|id| self.blocks.get(id))
+                    .map(|arc| arc.as_ref())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -115,7 +127,7 @@ impl ReferenceMap {
     }
 
     /// Gets the reference name for a target file.
-    pub fn get_target_name(&self, path: &PathBuf) -> Option<&ReferenceName> {
+    pub fn get_target_name(&self, path: &Path) -> Option<&ReferenceName> {
         self.targets.get(path)
     }
 
@@ -141,11 +153,18 @@ impl ReferenceMap {
 
     /// Returns all code blocks in insertion order.
     pub fn blocks(&self) -> impl Iterator<Item = &CodeBlock> {
-        self.blocks.values()
+        self.blocks.values().map(|arc| arc.as_ref())
     }
 
     /// Returns all (ID, CodeBlock) pairs in insertion order.
     pub fn iter(&self) -> impl Iterator<Item = (&ReferenceId, &CodeBlock)> {
+        self.blocks.iter().map(|(id, arc)| (id, arc.as_ref()))
+    }
+
+    /// Returns all (ID, Arc<CodeBlock>) pairs in insertion order.
+    ///
+    /// Use this when transferring blocks between maps to avoid deep cloning.
+    pub fn iter_arcs(&self) -> impl Iterator<Item = (&ReferenceId, &Arc<CodeBlock>)> {
         self.blocks.iter()
     }
 
@@ -182,20 +201,7 @@ impl ReferenceMap {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::text_location::TextLocation;
-
-    fn make_block(name: &str, source: &str) -> CodeBlock {
-        CodeBlock::new(
-            ReferenceId::first(ReferenceName::new(name)),
-            Some("python".to_string()),
-            source.to_string(),
-            TextLocation::default(),
-        )
-    }
-
-    fn make_block_with_target(name: &str, source: &str, target: &str) -> CodeBlock {
-        make_block(name, source).with_target(PathBuf::from(target))
-    }
+    use crate::test_utils::{make_block, make_block_with_target};
 
     #[test]
     fn test_insert_and_get() {
