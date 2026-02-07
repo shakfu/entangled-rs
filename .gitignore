@@ -34,3 +34,9 @@ build/
 *.dylib
 *.lib
 *.a
+
+# agents
+.claude
+CLAUDE.md
+AGENTS.md
+GEMINI.md

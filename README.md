@@ -685,37 +685,6 @@ Entangled tracks file states in `.entangled/filedb.json`:
 
 This enables conflict detection when files are modified externally.
 
-## CI Integration
-
-### GitHub Action
-
-Add to your workflow to verify tangled files are in sync:
-
-```yaml
-- uses: entangled/entangled-rs@v1
-```
-
-The action downloads the matching release binary and runs `entangled tangle --dry-run`. Optional inputs:
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `version` | `latest` | Release version (e.g. `v0.1.0`) |
-| `args` | | Extra arguments for the tangle command |
-
-### Pre-commit Hook
-
-Add to `.pre-commit-config.yaml`:
-
-```yaml
-repos:
-  - repo: https://github.com/entangled/entangled-rs
-    rev: v0.1.0
-    hooks:
-      - id: entangled-check
-```
-
-This runs `entangled tangle --dry-run` to verify tangled files match their markdown sources.
-
 ## Migrating from Python Entangled
 
 entangled-rs is designed as a drop-in replacement for the [Python Entangled](https://github.com/entangled/entangled) project.

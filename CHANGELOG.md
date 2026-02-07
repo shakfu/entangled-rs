@@ -66,8 +66,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Release workflow (`.github/workflows/release.yml`): cross-platform binaries for linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64); creates GitHub Release with artifacts
 - Automated crates.io publishing in release workflow (requires `CARGO_REGISTRY_TOKEN` secret)
 - PyPI publishing workflow (`.github/workflows/pypi.yml`): builds sdist + wheels via maturin, publishes via OIDC trusted publisher
-- Reusable GitHub Action (`action.yml`): `uses: entangled/entangled-rs@v1` for CI checks
-- Pre-commit hook (`.pre-commit-hooks.yaml`): `entangled-check` runs `entangled tangle --dry-run`
 
 ### Changed
 
