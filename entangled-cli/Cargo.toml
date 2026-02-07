@@ -5,6 +5,7 @@ edition = "2021"
 description = "CLI for Entangled literate programming engine"
 license = "MIT"
 authors = ["Entangled Contributors"]
+repository = "https://github.com/entangled/entangled-rs"
 
 [dependencies]
 entangled = { path = "../entangled", features = ["clap"] }

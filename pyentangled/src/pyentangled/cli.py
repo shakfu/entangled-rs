@@ -9,6 +9,7 @@ Uses only Python standard library (no external dependencies).
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -21,15 +22,61 @@ from pyentangled._core import (
     Context,
     Document,
     execute_transaction,
+    locate_source,
     stitch_documents,
+    stitch_files,
     sync_documents,
     tangle_documents,
+    tangle_files,
 )
 
 
-def setup_logging(verbose: bool) -> None:
+DEFAULT_CONFIG = """\
+version = "2.0"
+
+# Glob patterns for source markdown files
+source_patterns = ["**/*.md"]
+
+# Code block syntax style for .md files
+# Options: "entangled-rs" (default), "pandoc", "quarto", "knitr"
+style = "entangled-rs"
+
+# How to annotate output files
+# Options: "standard" (default), "naked", "supplemental"
+annotation = "standard"
+
+# Default namespace for code block IDs
+# Options: "file" (prefix with filename, default), "none"
+namespace_default = "file"
+
+# File database location
+filedb_path = ".entangled/filedb.json"
+
+# Watch configuration
+[watch]
+debounce_ms = 100
+
+# Hook configuration
+[hooks]
+# shebang = true      # Move shebang lines to top of tangled output
+# spdx_license = true # Move SPDX license headers to top of tangled output
+
+# Custom language definitions (uncomment to add)
+# [[languages]]
+# name = "mylang"
+# comment = "#"
+# identifiers = ["ml", "myl"]
+"""
+
+
+def setup_logging(verbose: bool, quiet: bool) -> None:
     """Configure logging based on verbosity."""
-    level = logging.DEBUG if verbose else logging.INFO
+    if quiet:
+        level = logging.WARNING
+    elif verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
     logging.basicConfig(
         level=level,
         format="%(levelname)s: %(message)s",
@@ -39,6 +86,7 @@ def setup_logging(verbose: bool) -> None:
 def get_context(
     config_path: Optional[str],
     directory: Optional[str],
+    style: Optional[str] = None,
 ) -> Context:
     """Create a Context from CLI options."""
     base_dir = directory or os.getcwd()
@@ -48,38 +96,101 @@ def get_context(
     else:
         config = Config.from_dir(base_dir)
 
+    if style:
+        config.style = style
+
     return Context(config=config, base_dir=base_dir)
+
+
+def run_transaction(
+    context: Context,
+    transaction,
+    verb: str,
+    *,
+    diff: bool = False,
+    dry_run: bool = False,
+    force: bool = False,
+    quiet: bool = False,
+) -> int:
+    """Run a transaction with common option handling."""
+    if transaction.is_empty():
+        if not quiet:
+            print(f"No files to {verb}.")
+        return 0
+
+    if diff:
+        for d in transaction.diffs():
+            print(d)
+        return 0
+
+    if dry_run:
+        print(f"Would perform {len(transaction)} actions:")
+        for desc in transaction.describe():
+            print(f"  {desc}")
+        return 0
+
+    execute_transaction(transaction, context, force=force)
+    context.save_filedb()
+
+    if not quiet:
+        past = {"stitch": "Stitched", "tangle": "Tangled"}.get(verb, "Processed")
+        print(f"{past} {len(transaction)} files.")
+    return 0
+
+
+def cmd_init(args: argparse.Namespace) -> int:
+    """Execute the init command."""
+    try:
+        base_dir = Path(args.directory or os.getcwd())
+        config_path = base_dir / "entangled.toml"
+
+        if config_path.exists():
+            print(f"Error: {config_path} already exists", file=sys.stderr)
+            return 1
+
+        config_path.write_text(DEFAULT_CONFIG)
+        print(f"Created {config_path}")
+
+        db_dir = base_dir / ".entangled"
+        if not db_dir.exists():
+            db_dir.mkdir(parents=True)
+            print(f"Created {db_dir}/")
+
+        # Add .entangled/ to .gitignore
+        gitignore_path = base_dir / ".gitignore"
+        entry = ".entangled/"
+        if gitignore_path.exists():
+            content = gitignore_path.read_text()
+            if entry not in [line.strip() for line in content.splitlines()]:
+                suffix = "" if content.endswith("\n") else "\n"
+                gitignore_path.write_text(f"{content}{suffix}{entry}\n")
+                print(f"Added {entry} to {gitignore_path}")
+        else:
+            gitignore_path.write_text(f"{entry}\n")
+            print(f"Created {gitignore_path} with {entry}")
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
 
 
 def cmd_tangle(args: argparse.Namespace) -> int:
     """Execute the tangle command."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
 
         if args.files:
-            print(
-                f"Warning: File filtering not yet implemented, processing all files "
-                f"(ignoring {len(args.files)} specified files)",
-                file=sys.stderr,
-            )
+            transaction = tangle_files(context, args.files)
+        else:
+            transaction = tangle_documents(context)
 
-        transaction = tangle_documents(context)
-
-        if transaction.is_empty():
-            print("No files to tangle.")
-            return 0
-
-        if args.dry_run:
-            print(f"Would perform {len(transaction)} actions:")
-            for desc in transaction.describe():
-                print(f"  {desc}")
-            return 0
-
-        execute_transaction(transaction, context, force=args.force)
-        context.save_filedb()
-
-        print(f"Tangled {len(transaction)} files.")
-        return 0
+        return run_transaction(
+            context, transaction, "tangle",
+            diff=args.diff, dry_run=args.dry_run,
+            force=args.force, quiet=args.quiet,
+        )
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -89,32 +200,18 @@ def cmd_tangle(args: argparse.Namespace) -> int:
 def cmd_stitch(args: argparse.Namespace) -> int:
     """Execute the stitch command."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
 
         if args.files:
-            print(
-                f"Warning: File filtering not yet implemented, processing all files "
-                f"(ignoring {len(args.files)} specified files)",
-                file=sys.stderr,
-            )
+            transaction = stitch_files(context, args.files)
+        else:
+            transaction = stitch_documents(context)
 
-        transaction = stitch_documents(context)
-
-        if transaction.is_empty():
-            print("No files to stitch.")
-            return 0
-
-        if args.dry_run:
-            print(f"Would perform {len(transaction)} actions:")
-            for desc in transaction.describe():
-                print(f"  {desc}")
-            return 0
-
-        execute_transaction(transaction, context, force=args.force)
-        context.save_filedb()
-
-        print(f"Stitched {len(transaction)} files.")
-        return 0
+        return run_transaction(
+            context, transaction, "stitch",
+            diff=args.diff, dry_run=args.dry_run,
+            force=args.force, quiet=args.quiet,
+        )
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
@@ -124,11 +221,40 @@ def cmd_stitch(args: argparse.Namespace) -> int:
 def cmd_sync(args: argparse.Namespace) -> int:
     """Execute the sync command."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
+
+        if args.diff or args.dry_run:
+            stitch_tx = stitch_documents(context)
+            tangle_tx = tangle_documents(context)
+
+            if args.diff:
+                for d in stitch_tx.diffs():
+                    print(d)
+                for d in tangle_tx.diffs():
+                    print(d)
+                return 0
+
+            # dry_run
+            stitch_count = len(stitch_tx)
+            tangle_count = len(tangle_tx)
+            if stitch_count + tangle_count == 0:
+                if not args.quiet:
+                    print("Nothing to do.")
+            else:
+                if stitch_count > 0:
+                    print(f"Would stitch {stitch_count} files:")
+                    for desc in stitch_tx.describe():
+                        print(f"  {desc}")
+                if tangle_count > 0:
+                    print(f"Would tangle {tangle_count} files:")
+                    for desc in tangle_tx.describe():
+                        print(f"  {desc}")
+            return 0
 
         sync_documents(context, force=args.force)
 
-        print("Synchronization complete.")
+        if not args.quiet:
+            print("Synchronization complete.")
         return 0
 
     except Exception as e:
@@ -139,11 +265,12 @@ def cmd_sync(args: argparse.Namespace) -> int:
 def cmd_watch(args: argparse.Namespace) -> int:
     """Execute the watch command using polling (stdlib only)."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
         debounce_seconds = args.debounce / 1000.0
 
-        print(f"Watching for changes (debounce: {args.debounce}ms)...")
-        print("Press Ctrl+C to stop.")
+        if not args.quiet:
+            print(f"Watching for changes (debounce: {args.debounce}ms)...")
+            print("Press Ctrl+C to stop.")
 
         # Initial sync
         try:
@@ -151,10 +278,19 @@ def cmd_watch(args: argparse.Namespace) -> int:
         except Exception as e:
             print(f"Initial sync error: {e}", file=sys.stderr)
 
+        # Build watched extensions from source file patterns
+        base_path = Path(context.base_dir)
+        source_files = context.source_files()
+        extensions = set()
+        for f in source_files:
+            ext = Path(f).suffix
+            if ext:
+                extensions.add(ext)
+        if not extensions:
+            extensions = {".md"}
+
         # Track file modification times
         file_mtimes: dict[Path, float] = {}
-        base_path = Path(context.base_dir)
-        extensions = {".md", ".py", ".rs", ".js", ".ts", ".go", ".java", ".c", ".cpp", ".h"}
 
         def get_watched_files() -> dict[Path, float]:
             """Get all watched files and their modification times."""
@@ -198,9 +334,10 @@ def cmd_watch(args: argparse.Namespace) -> int:
                         last_sync = now
                         file_mtimes = current_mtimes
                         try:
-                            new_context = get_context(args.config, args.directory)
+                            new_context = get_context(args.config, args.directory, args.style)
                             sync_documents(new_context)
-                            print("Synced after file change.")
+                            if not args.quiet:
+                                print("Synced after file change.")
                         except Exception as e:
                             print(f"Sync error: {e}", file=sys.stderr)
 
@@ -216,14 +353,9 @@ def cmd_watch(args: argparse.Namespace) -> int:
 def cmd_status(args: argparse.Namespace) -> int:
     """Execute the status command."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
 
         source_files = context.source_files()
-        print(f"Source files: {len(source_files)}")
-
-        if args.status_verbose:
-            for f in source_files:
-                print(f"  {f}")
 
         # Load documents and collect targets
         targets = []
@@ -234,13 +366,100 @@ def cmd_status(args: argparse.Namespace) -> int:
             except Exception:
                 pass
 
-        print(f"\nTarget files: {len(targets)}")
+        if args.json:
+            output = {
+                "source_files": source_files,
+                "targets": [{"path": t} for t in targets],
+                "tracked_count": context.tracked_file_count(),
+            }
+            print(json.dumps(output, indent=2))
+        else:
+            print(f"Source files: {len(source_files)}")
 
-        if args.status_verbose:
-            for t in targets:
-                print(f"  {t}")
+            if args.status_verbose:
+                for f in source_files:
+                    print(f"  {f}")
 
-        print(f"\nTracked files in database: {context.tracked_file_count()}")
+            print(f"\nTarget files: {len(targets)}")
+
+            if args.status_verbose:
+                for t in targets:
+                    print(f"  {t}")
+
+            print(f"\nTracked files in database: {context.tracked_file_count()}")
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_locate(args: argparse.Namespace) -> int:
+    """Execute the locate command."""
+    try:
+        # Parse FILE:LINE
+        location = args.location
+        if ":" not in location:
+            print("Error: Expected FILE:LINE format", file=sys.stderr)
+            return 1
+
+        file_part, line_part = location.rsplit(":", 1)
+        try:
+            line_num = int(line_part)
+        except ValueError:
+            print(f"Error: Invalid line number: {line_part}", file=sys.stderr)
+            return 1
+
+        context = get_context(args.config, args.directory, args.style)
+        full_path = context.resolve_path(file_part)
+
+        if not Path(full_path).exists():
+            print(f"Error: File not found: {full_path}", file=sys.stderr)
+            return 1
+
+        result = locate_source(context, full_path, line_num)
+
+        if result is not None:
+            print(f"{result['source_file']}:{result['source_line']}")
+        else:
+            print(
+                f"No source mapping for {file_part}:{line_num}",
+                file=sys.stderr,
+            )
+
+        return 0
+
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        return 1
+
+
+def cmd_config(args: argparse.Namespace) -> int:
+    """Execute the config command."""
+    try:
+        base_dir = args.directory or os.getcwd()
+        if args.config:
+            config = Config.from_file(args.config)
+        else:
+            config = Config.from_dir(base_dir)
+        if args.style:
+            config.style = args.style
+
+        print(f"style = \"{config.style}\"")
+        print(f"annotation = \"{config.annotation}\"")
+        print(f"namespace_default = \"{config.namespace_default}\"")
+        print(f"source_patterns = {config.source_patterns}")
+        print(f"filedb_path = \"{config.filedb_path}\"")
+        print(f"strip_quarto_options = {'true' if config.strip_quarto_options else 'false'}")
+        if config.output_dir is not None:
+            print(f"output_dir = \"{config.output_dir}\"")
+        print()
+        print("[hooks]")
+        print(f"shebang = {'true' if config.hooks_shebang else 'false'}")
+        print(f"spdx_license = {'true' if config.hooks_spdx_license else 'false'}")
+        print()
+        print("[watch]")
+        print(f"debounce_ms = {config.watch_debounce_ms}")
         return 0
 
     except Exception as e:
@@ -251,7 +470,7 @@ def cmd_status(args: argparse.Namespace) -> int:
 def cmd_reset(args: argparse.Namespace) -> int:
     """Execute the reset command."""
     try:
-        context = get_context(args.config, args.directory)
+        context = get_context(args.config, args.directory, args.style)
 
         if args.delete_files:
             tracked = context.tracked_files()
@@ -319,6 +538,18 @@ def create_parser() -> argparse.ArgumentParser:
         help="Working directory",
     )
     parser.add_argument(
+        "-s", "--style",
+        metavar="STYLE",
+        choices=["entangled-rs", "pandoc", "quarto", "knitr"],
+        help="Code block syntax style",
+    )
+    parser.add_argument(
+        "-q", "--quiet",
+        action="store_true",
+        default=False,
+        help="Suppress normal output",
+    )
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Verbose output",
@@ -330,6 +561,13 @@ def create_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
+
+    # init
+    p_init = subparsers.add_parser(
+        "init",
+        help="Initialize entangled configuration",
+    )
+    p_init.set_defaults(func=cmd_init)
 
     # tangle
     p_tangle = subparsers.add_parser(
@@ -347,10 +585,15 @@ def create_parser() -> argparse.ArgumentParser:
         help="Show what would be done",
     )
     p_tangle.add_argument(
+        "-d", "--diff",
+        action="store_true",
+        help="Show unified diffs of what would change",
+    )
+    p_tangle.add_argument(
         "files",
         nargs="*",
         metavar="FILE",
-        help="Specific files to tangle",
+        help="Specific source files to tangle",
     )
     p_tangle.set_defaults(func=cmd_tangle)
 
@@ -370,10 +613,15 @@ def create_parser() -> argparse.ArgumentParser:
         help="Show what would be done",
     )
     p_stitch.add_argument(
+        "-d", "--diff",
+        action="store_true",
+        help="Show unified diffs of what would change",
+    )
+    p_stitch.add_argument(
         "files",
         nargs="*",
         metavar="FILE",
-        help="Specific files to stitch",
+        help="Specific source files to stitch",
     )
     p_stitch.set_defaults(func=cmd_stitch)
 
@@ -387,6 +635,16 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force overwrite modified files",
     )
+    p_sync.add_argument(
+        "-n", "--dry-run",
+        action="store_true",
+        help="Show what would be done",
+    )
+    p_sync.add_argument(
+        "-d", "--diff",
+        action="store_true",
+        help="Show unified diffs of what would change",
+    )
     p_sync.set_defaults(func=cmd_sync)
 
     # watch
@@ -395,7 +653,7 @@ def create_parser() -> argparse.ArgumentParser:
         help="Watch for changes and sync automatically",
     )
     p_watch.add_argument(
-        "-d", "--debounce",
+        "--debounce",
         type=int,
         default=100,
         metavar="MS",
@@ -414,7 +672,31 @@ def create_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show detailed output",
     )
+    p_status.add_argument(
+        "--json",
+        action="store_true",
+        help="Output machine-readable JSON",
+    )
     p_status.set_defaults(func=cmd_status)
+
+    # locate
+    p_locate = subparsers.add_parser(
+        "locate",
+        help="Locate markdown source for a tangled file line",
+    )
+    p_locate.add_argument(
+        "location",
+        metavar="FILE:LINE",
+        help="Target file and line number (e.g. output.py:10)",
+    )
+    p_locate.set_defaults(func=cmd_locate)
+
+    # config
+    p_config = subparsers.add_parser(
+        "config",
+        help="Print effective configuration",
+    )
+    p_config.set_defaults(func=cmd_config)
 
     # reset
     p_reset = subparsers.add_parser(
@@ -441,7 +723,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = create_parser()
     args = parser.parse_args(argv)
 
-    setup_logging(args.verbose)
+    # Set defaults for global flags that subcommands might access
+    if not hasattr(args, "quiet"):
+        args.quiet = False
+    if not hasattr(args, "style"):
+        args.style = None
+
+    setup_logging(args.verbose, args.quiet)
 
     if args.command is None:
         parser.print_help()

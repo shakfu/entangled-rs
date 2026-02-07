@@ -37,6 +37,24 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 
 ## Installation
 
+### Pre-built Binaries
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/entangled/entangled-rs/releases):
+
+| Platform | Archive |
+|----------|---------|
+| Linux (x86_64) | `entangled-v*-x86_64-unknown-linux-gnu.tar.gz` |
+| Linux (aarch64) | `entangled-v*-aarch64-unknown-linux-gnu.tar.gz` |
+| macOS (x86_64) | `entangled-v*-x86_64-apple-darwin.tar.gz` |
+| macOS (Apple Silicon) | `entangled-v*-aarch64-apple-darwin.tar.gz` |
+| Windows (x86_64) | `entangled-v*-x86_64-pc-windows-msvc.zip` |
+
+### Using Cargo
+
+```bash
+cargo install entangled-cli
+```
+
 ### From Source
 
 ```bash
@@ -45,10 +63,10 @@ cd entangled-rs
 cargo install --path entangled-cli
 ```
 
-### Using Cargo
+### Python Bindings
 
 ```bash
-cargo install entangled-cli
+pip install pyentangled
 ```
 
 ## Quick Start
@@ -580,6 +598,37 @@ Entangled tracks file states in `.entangled/filedb.json`:
 ```
 
 This enables conflict detection when files are modified externally.
+
+## CI Integration
+
+### GitHub Action
+
+Add to your workflow to verify tangled files are in sync:
+
+```yaml
+- uses: entangled/entangled-rs@v1
+```
+
+The action downloads the matching release binary and runs `entangled tangle --dry-run`. Optional inputs:
+
+| Input | Default | Description |
+|-------|---------|-------------|
+| `version` | `latest` | Release version (e.g. `v0.1.0`) |
+| `args` | | Extra arguments for the tangle command |
+
+### Pre-commit Hook
+
+Add to `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/entangled/entangled-rs
+    rev: v0.1.0
+    hooks:
+      - id: entangled-check
+```
+
+This runs `entangled tangle --dry-run` to verify tangled files match their markdown sources.
 
 ## Migrating from Python Entangled
 

@@ -5,6 +5,7 @@ edition = "2021"
 description = "Literate programming engine - Rust translation"
 license = "MIT"
 authors = ["Entangled Contributors"]
+repository = "https://github.com/entangled/entangled-rs"
 
 [dependencies]
 nom = "8"

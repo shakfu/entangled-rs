@@ -9,28 +9,58 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  fmt:
+    name: Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo clippy -p entangled -p entangled-cli -- -D warnings
+
   test:
     name: Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
-
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-
       - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p entangled -p entangled-cli
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
-
-      - name: Clippy
-        run: cargo clippy -p entangled -p entangled-cli -- -D warnings
-
-      - name: Run tests
-        run: cargo test -p entangled -p entangled-cli
+  pyentangled:
+    name: pyentangled (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install maturin and pytest
+        run: pip install maturin pytest
+      - name: Build and install pyentangled
+        run: cd pyentangled && maturin develop
+      - name: Run pyentangled tests
+        run: cd pyentangled && pytest tests/ -v

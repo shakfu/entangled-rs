@@ -20,9 +20,12 @@ from pyentangled._core import (
     CodeBlock,
     Document,
     tangle_documents,
+    tangle_files,
     stitch_documents,
+    stitch_files,
     execute_transaction,
     sync_documents,
+    locate_source,
     tangle_ref,
 )
 
@@ -33,9 +36,12 @@ __all__ = [
     "CodeBlock",
     "Document",
     "tangle_documents",
+    "tangle_files",
     "stitch_documents",
+    "stitch_files",
     "execute_transaction",
     "sync_documents",
+    "locate_source",
     "tangle_ref",
     "main",
 ]

@@ -4,11 +4,13 @@ use std::path::PathBuf;
 
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 
 use entangled::config::{self, AnnotationMethod, NamespaceDefault};
 use entangled::interface::{self, Context, Document};
 use entangled::io::Transaction;
 use entangled::model::{CodeBlock, ReferenceMap, ReferenceName};
+use entangled::Style;
 
 /// Convert entangled errors to Python exceptions.
 fn to_py_err(e: entangled::errors::EntangledError) -> PyErr {
@@ -101,9 +103,97 @@ impl PyConfig {
         Ok(())
     }
 
+    /// Get style as string.
+    #[getter]
+    fn style(&self) -> String {
+        self.inner.style.name().to_string()
+    }
+
+    /// Set style from string.
+    #[setter]
+    fn set_style(&mut self, value: &str) -> PyResult<()> {
+        self.inner.style = value
+            .parse::<Style>()
+            .map_err(PyValueError::new_err)?;
+        Ok(())
+    }
+
+    /// Get output directory.
+    #[getter]
+    fn output_dir(&self) -> Option<String> {
+        self.inner.output_dir.as_ref().map(|p| p.display().to_string())
+    }
+
+    /// Set output directory.
+    #[setter]
+    fn set_output_dir(&mut self, value: Option<String>) {
+        self.inner.output_dir = value.map(PathBuf::from);
+    }
+
+    /// Get hooks.shebang setting.
+    #[getter]
+    fn hooks_shebang(&self) -> bool {
+        self.inner.hooks.shebang
+    }
+
+    /// Set hooks.shebang setting.
+    #[setter]
+    fn set_hooks_shebang(&mut self, value: bool) {
+        self.inner.hooks.shebang = value;
+    }
+
+    /// Get hooks.spdx_license setting.
+    #[getter]
+    fn hooks_spdx_license(&self) -> bool {
+        self.inner.hooks.spdx_license
+    }
+
+    /// Set hooks.spdx_license setting.
+    #[setter]
+    fn set_hooks_spdx_license(&mut self, value: bool) {
+        self.inner.hooks.spdx_license = value;
+    }
+
+    /// Get file database path.
+    #[getter]
+    fn filedb_path(&self) -> String {
+        self.inner.filedb_path.display().to_string()
+    }
+
+    /// Set file database path.
+    #[setter]
+    fn set_filedb_path(&mut self, value: &str) {
+        self.inner.filedb_path = PathBuf::from(value);
+    }
+
+    /// Get strip_quarto_options setting.
+    #[getter]
+    fn strip_quarto_options(&self) -> bool {
+        self.inner.strip_quarto_options
+    }
+
+    /// Set strip_quarto_options setting.
+    #[setter]
+    fn set_strip_quarto_options(&mut self, value: bool) {
+        self.inner.strip_quarto_options = value;
+    }
+
+    /// Get watch debounce delay in milliseconds.
+    #[getter]
+    fn watch_debounce_ms(&self) -> u64 {
+        self.inner.watch.debounce_ms
+    }
+
+    /// Set watch debounce delay in milliseconds.
+    #[setter]
+    fn set_watch_debounce_ms(&mut self, value: u64) {
+        self.inner.watch.debounce_ms = value;
+    }
+
     fn __repr__(&self) -> String {
         format!(
-            "Config(annotation='{}', namespace_default='{}', source_patterns={:?})",
+            "Config(style='{}', annotation='{}', namespace_default='{}', source_patterns={:?})",
+            self.style(),
             self.annotation(),
             self.namespace_default(),
             self.source_patterns()
@@ -132,6 +222,11 @@ impl PyTransaction {
     /// Get descriptions of all actions.
     fn describe(&self) -> Vec<String> {
         self.inner.describe()
+    }
+
+    /// Get unified diffs for all actions.
+    fn diffs(&self) -> Vec<String> {
+        self.inner.diffs()
     }
 
     fn __repr__(&self) -> String {
@@ -380,12 +475,32 @@ fn tangle_documents(ctx: &mut PyContext) -> PyResult<PyTransaction> {
     Ok(PyTransaction { inner: tx })
 }
 
+/// Tangle specific source files.
+///
+/// Returns a Transaction that can be inspected or executed.
+#[pyfunction]
+fn tangle_files(ctx: &mut PyContext, source_files: Vec<String>) -> PyResult<PyTransaction> {
+    let paths: Vec<PathBuf> = source_files.into_iter().map(PathBuf::from).collect();
+    let tx = interface::tangle_files(&ctx.inner, &paths).map_err(to_py_err)?;
+    Ok(PyTransaction { inner: tx })
+}
+
 /// Stitch all documents in the context.
 ///
 /// Returns a Transaction that can be inspected or executed.
 #[pyfunction]
 fn stitch_documents(ctx: &mut PyContext) -> PyResult<PyTransaction> {
     let tx = interface::stitch_documents(&ctx.inner).map_err(to_py_err)?;
+    Ok(PyTransaction { inner: tx })
+}
+
+/// Stitch specific source files.
+///
+/// Returns a Transaction that can be inspected or executed.
+#[pyfunction]
+fn stitch_files(ctx: &mut PyContext, source_files: Vec<String>) -> PyResult<PyTransaction> {
+    let paths: Vec<PathBuf> = source_files.into_iter().map(PathBuf::from).collect();
+    let tx = interface::stitch_files(&ctx.inner, &paths).map_err(to_py_err)?;
     Ok(PyTransaction { inner: tx })
 }
 
@@ -416,6 +531,32 @@ fn execute_transaction(
 #[pyo3(signature = (ctx, force=false))]
 fn sync_documents(ctx: &mut PyContext, force: bool) -> PyResult<()> {
     interface::sync_documents(&mut ctx.inner, force).map_err(to_py_err)
+}
+
+/// Locate the markdown source for a line in a tangled file.
+///
+/// Returns a dict with keys "source_file", "source_line", "block_id",
+/// or None if the line is an annotation marker.
+#[pyfunction]
+fn locate_source<'py>(
+    py: Python<'py>,
+    ctx: &PyContext,
+    target_file: &str,
+    target_line: usize,
+) -> PyResult<Option<Bound<'py, PyDict>>> {
+    let result = interface::locate_source(&ctx.inner, &PathBuf::from(target_file), target_line)
+        .map_err(to_py_err)?;
+
+    match result {
+        Some(loc) => {
+            let dict = PyDict::new(py);
+            dict.set_item("source_file", loc.source_file.display().to_string())?;
+            dict.set_item("source_line", loc.source_line)?;
+            dict.set_item("block_id", loc.block_id.to_string())?;
+            Ok(Some(dict))
+        }
+        None => Ok(None),
+    }
 }
 
 /// Tangle a reference by name from a reference map.
@@ -470,13 +611,22 @@ mod _core {
     use super::tangle_documents;
 
     #[pymodule_export]
+    use super::tangle_files;
+
+    #[pymodule_export]
     use super::stitch_documents;
+
+    #[pymodule_export]
+    use super::stitch_files;
 
     #[pymodule_export]
     use super::execute_transaction;
 
     #[pymodule_export]
     use super::sync_documents;
+
+    #[pymodule_export]
+    use super::locate_source;
 
     #[pymodule_export]
     use super::tangle_ref;

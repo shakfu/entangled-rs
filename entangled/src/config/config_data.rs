@@ -136,7 +136,7 @@ impl Config {
 }
 
 /// Watch mode configuration.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchConfig {
     /// Debounce delay in milliseconds.
     #[serde(default = "default_debounce")]
@@ -149,6 +149,16 @@ pub struct WatchConfig {
     /// Patterns to exclude from watching.
     #[serde(default)]
     pub exclude: Vec<String>,
+}
+
+impl Default for WatchConfig {
+    fn default() -> Self {
+        Self {
+            debounce_ms: default_debounce(),
+            include: Vec::new(),
+            exclude: Vec::new(),
+        }
+    }
 }
 
 fn default_debounce() -> u64 {
