@@ -69,6 +69,20 @@ cargo install --path entangled-cli
 pip install pyentangled
 ```
 
+The Python CLI mirrors the Rust CLI:
+
+```bash
+pyentangled init
+pyentangled tangle
+pyentangled stitch --diff
+pyentangled sync --dry-run
+pyentangled locate output.py:10
+pyentangled status --json
+pyentangled config
+```
+
+See [Python Bindings API](#python-bindings-api) for library usage.
+
 ## Quick Start
 
 1. Create a markdown file with code blocks:
@@ -420,7 +434,7 @@ This project is organized as a Cargo workspace:
 |-------|------|---------|-------------|
 | `entangled` | Library | 2021 | Core library with no CLI dependencies |
 | `entangled-cli` | Binary | 2021 | Command-line interface |
-| `pyentangled` | Python | 2024 | Python bindings and CLI (PyO3/maturin) |
+| `pyentangled` | Python | 2024 | Python bindings and CLI with full command parity (PyO3/maturin) |
 
 ### Rust Version Requirements
 
@@ -551,6 +565,78 @@ registry.add(SpdxLicenseHook::new());
 
 // Hooks process blocks during tangle
 let result = registry.run_post_tangle(&content, &block)?;
+```
+
+## Python Bindings API
+
+### Basic Usage
+
+```python
+from pyentangled import Context, tangle_documents, execute_transaction
+
+ctx = Context.from_current_dir()
+tx = tangle_documents(ctx)
+if not tx.is_empty():
+    execute_transaction(tx, ctx)
+    ctx.save_filedb()
+```
+
+### Configuration
+
+```python
+from pyentangled import Config, Context
+
+cfg = Config()
+cfg.style = "pandoc"
+cfg.annotation = "naked"
+cfg.hooks_shebang = True
+cfg.source_patterns = ["docs/**/*.md"]
+
+ctx = Context(config=cfg, base_dir="/path/to/project")
+```
+
+Available Config properties: `style`, `annotation`, `namespace_default`, `source_patterns`, `output_dir`, `hooks_shebang`, `hooks_spdx_license`, `filedb_path`, `strip_quarto_options`, `watch_debounce_ms`.
+
+### File-Specific Operations
+
+```python
+from pyentangled import tangle_files, stitch_files
+
+# Tangle only specific source files
+tx = tangle_files(ctx, ["chapter1.md", "chapter2.md"])
+
+# Stitch only specific source files
+tx = stitch_files(ctx, ["chapter1.md"])
+```
+
+### Diffs and Dry Runs
+
+```python
+tx = tangle_documents(ctx)
+for diff in tx.diffs():
+    print(diff)
+```
+
+### Source Location Mapping
+
+```python
+from pyentangled import locate_source
+
+result = locate_source(ctx, "output.py", 10)
+if result:
+    print(f"{result['source_file']}:{result['source_line']}")
+```
+
+### Document Parsing
+
+```python
+from pyentangled import Document, tangle_ref
+
+doc = Document.parse(markdown_content)
+for block in doc.blocks():
+    print(f"{block.name}: {block.language}, {block.line_count()} lines")
+
+output = tangle_ref(doc, "main", annotate=False)
 ```
 
 ## Built-in Languages

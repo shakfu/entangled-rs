@@ -48,8 +48,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Descriptive `long_about` in `--help` output
 
 #### Python Bindings
-- `pyentangled` crate with PyO3 bindings exposing Config, Context, Document, CodeBlock, Transaction, tangle_documents, stitch_documents, execute_transaction, sync_documents, tangle_ref
-- Python test suite with 39 tests covering the full API
+- `pyentangled` crate with PyO3 bindings exposing Config, Context, Document, CodeBlock, Transaction
+- Core functions: tangle_documents, tangle_files, stitch_documents, stitch_files, execute_transaction, sync_documents, locate_source, tangle_ref
+- Config getters/setters: style, output_dir, hooks_shebang, hooks_spdx_license, filedb_path, strip_quarto_options, watch_debounce_ms
+- Transaction.diffs() method for unified diff output
+- locate_source() returns dict with source_file, source_line, block_id (or None for annotation lines)
+- Python CLI (`pyentangled`) with full command parity:
+  - Commands: init, tangle, stitch, sync, watch, status, locate, config, reset
+  - Global flags: --style/-s, --quiet/-q, --verbose/-v
+  - Per-command flags: --diff/-d, --dry-run/-n, --force/-f, --json (status)
+  - File filtering via tangle_files()/stitch_files() (no longer stub)
+  - Watch derives extensions from source_files() instead of hardcoded set
+- Python test suite with 60 tests covering the full API
 
 #### CI/CD
 - GitHub Actions CI pipeline (`.github/workflows/ci.yml`): fmt, clippy, tests on ubuntu/macos/windows, pyentangled tests with Python 3.9 + 3.13
@@ -112,6 +122,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - File extensions derived dynamically from `source_patterns` and registered languages
 - `WatchConfig.exclude` patterns applied via glob matching
 - `WatchConfig.include` directories watched alongside base directory
+
+### Fixed
+- `WatchConfig::default()` now returns `debounce_ms: 100` (was 0 due to `#[derive(Default)]` on u64; serde default and programmatic default are now consistent)
 
 #### Configuration
 - Default `source_patterns` now includes `**/*.qmd` and `**/*.Rmd`

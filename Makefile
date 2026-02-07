@@ -1,30 +1,36 @@
-.PHONY: test build clean check fmt clippy release all pyentangled
+.PHONY: test build clean check fmt clippy release all pyentangled \
+		test-pyentangled test-all
 
 # Default targets use default-members (entangled + entangled-cli).
 # pyentangled requires maturin: cd pyentangled && maturin develop
 
 test:
-	cargo test
+	@cargo test
 
 build:
-	cargo build
+	@cargo build
 
 release:
-	cargo build --release
+	@cargo build --release
 
 clean:
-	cargo clean
+	@cargo clean
 
 check:
-	cargo check
+	@cargo check
 
 fmt:
-	cargo fmt --all
+	@cargo fmt --all
 
 clippy:
-	cargo clippy -- -D warnings
+	@cargo clippy -- -D warnings
 
 pyentangled:
-	cd pyentangled && maturin develop --release
+	@cd pyentangled && maturin develop --release
+
+test-pyentangled:
+	@cd pyentangled && uv run pytest
+
+test-all: test test-pyentangled
 
 all: fmt clippy test build
