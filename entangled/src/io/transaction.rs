@@ -402,12 +402,7 @@ fn lcs_table(old: &[&str], new: &[&str]) -> Vec<Vec<usize>> {
     table
 }
 
-fn collect_hunks(
-    old: &[&str],
-    new: &[&str],
-    lcs: &[Vec<usize>],
-    context: usize,
-) -> Vec<DiffHunk> {
+fn collect_hunks(old: &[&str], new: &[&str], lcs: &[Vec<usize>], context: usize) -> Vec<DiffHunk> {
     // Build edit script from LCS table
     let mut edits: Vec<(char, usize, usize)> = Vec::new(); // (type, old_idx, new_idx)
     let mut i = old.len();
@@ -520,11 +515,7 @@ fn atomic_write(path: &Path, content: &str) -> io::Result<()> {
     // Create temp file in the same directory with unique name
     let parent = path.parent().unwrap_or(Path::new("."));
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let temp_path = parent.join(format!(
-        ".entangled-tmp-{}-{}",
-        std::process::id(),
-        counter,
-    ));
+    let temp_path = parent.join(format!(".entangled-tmp-{}-{}", std::process::id(), counter,));
 
     // Write to temp file
     {
@@ -669,7 +660,10 @@ mod tests {
 
         let mut db = FileDB::new();
         // Record different content to create conflict
-        db.record(path.clone(), FileData::from_content("different", Utc::now()));
+        db.record(
+            path.clone(),
+            FileData::from_content("different", Utc::now()),
+        );
 
         let mut tx = Transaction::new();
         tx.write(&path, "forced");

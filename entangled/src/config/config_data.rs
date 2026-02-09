@@ -189,7 +189,10 @@ mod tests {
     fn test_default_config() {
         let config = Config::default();
         assert_eq!(config.version, "2.0");
-        assert_eq!(config.source_patterns, vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]);
+        assert_eq!(
+            config.source_patterns,
+            vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]
+        );
         assert_eq!(config.annotation, AnnotationMethod::Standard);
     }
 

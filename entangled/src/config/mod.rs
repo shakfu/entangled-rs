@@ -11,16 +11,14 @@ mod templates;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+pub use crate::style::Style;
 pub use annotation_method::AnnotationMethod;
 pub use config_data::{Config, HooksConfig, WatchConfig};
 pub use config_update::ConfigUpdate;
 pub use language::{Comment, Language};
-pub use markers::{
-    annotation_begin, annotation_end, Markers, ANNOTATION_PREFIX, REF_PATTERN,
-};
+pub use markers::{annotation_begin, annotation_end, Markers, ANNOTATION_PREFIX, REF_PATTERN};
 pub use namespace_default::NamespaceDefault;
 pub use templates::{builtin_languages, find_language};
-pub use crate::style::Style;
 
 use crate::errors::Result;
 
@@ -135,7 +133,10 @@ annotation = "naked"
         let dir = tempdir().unwrap();
         let config = read_config(dir.path()).unwrap();
         assert_eq!(config.version, "2.0");
-        assert_eq!(config.source_patterns, vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]);
+        assert_eq!(
+            config.source_patterns,
+            vec!["**/*.md", "**/*.qmd", "**/*.Rmd"]
+        );
     }
 
     #[test]

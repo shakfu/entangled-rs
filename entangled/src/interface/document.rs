@@ -293,11 +293,9 @@ pub fn locate_source(
     use once_cell::sync::Lazy;
     use regex::Regex;
 
-    static BEGIN_PAT: Lazy<Regex> = Lazy::new(|| {
-        Regex::new(r"^\s*\S+\s+~/~\s+begin\s+<<(?P<ref>[^>]+)>>").unwrap()
-    });
-    static END_PAT: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"^\s*\S+\s+~/~\s+end\s*$").unwrap());
+    static BEGIN_PAT: Lazy<Regex> =
+        Lazy::new(|| Regex::new(r"^\s*\S+\s+~/~\s+begin\s+<<(?P<ref>[^>]+)>>").unwrap());
+    static END_PAT: Lazy<Regex> = Lazy::new(|| Regex::new(r"^\s*\S+\s+~/~\s+end\s*$").unwrap());
 
     // Read the tangled file
     let tangled_content = std::fs::read_to_string(target_file)?;
@@ -513,7 +511,10 @@ print('hello')
 
         // Stitch should find no changes
         let stitch_tx = stitch_documents(&ctx).unwrap();
-        assert!(stitch_tx.is_empty(), "Expected no changes after fresh tangle");
+        assert!(
+            stitch_tx.is_empty(),
+            "Expected no changes after fresh tangle"
+        );
     }
 
     #[test]
@@ -545,7 +546,10 @@ print('hello')
 
         // Stitch should detect the change and produce a write action
         let stitch_tx = stitch_documents(&ctx).unwrap();
-        assert!(!stitch_tx.is_empty(), "Expected stitch to detect modification");
+        assert!(
+            !stitch_tx.is_empty(),
+            "Expected stitch to detect modification"
+        );
 
         // Execute the stitch
         stitch_tx.execute_force(&mut ctx.filedb).unwrap();
@@ -726,9 +730,6 @@ print('hello')
 
         // Stitch should produce no changes (can't parse naked files)
         let stitch_tx = stitch_documents(&ctx).unwrap();
-        assert!(
-            stitch_tx.is_empty(),
-            "Stitch should skip naked-mode files"
-        );
+        assert!(stitch_tx.is_empty(), "Stitch should skip naked-mode files");
     }
 }

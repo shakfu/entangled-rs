@@ -144,7 +144,11 @@ mod tests {
             Ok(None)
         }
 
-        fn post_tangle(&self, content: &str, _block: &CodeBlock) -> Result<Option<PostTangleResult>> {
+        fn post_tangle(
+            &self,
+            content: &str,
+            _block: &CodeBlock,
+        ) -> Result<Option<PostTangleResult>> {
             Ok(Some(PostTangleResult {
                 prefix: Some(self.prefix.clone()),
                 content: content.to_string(),

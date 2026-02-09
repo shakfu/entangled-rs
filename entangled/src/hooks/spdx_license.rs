@@ -139,7 +139,11 @@ mod tests {
     #[test]
     fn test_pre_tangle() {
         let hook = SpdxLicenseHook::new();
-        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\n\nfn main() {}", "rust");
+        let block = test_utils::make_block_lang(
+            "test",
+            "// SPDX-License-Identifier: MIT\n\nfn main() {}",
+            "rust",
+        );
 
         let result = hook.pre_tangle(&block).unwrap().unwrap();
         assert!(!result.source.contains("SPDX"));
@@ -149,17 +153,28 @@ mod tests {
     #[test]
     fn test_post_tangle_with_target() {
         let hook = SpdxLicenseHook::new();
-        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\nfn main() {}", "rust")
-            .with_target(PathBuf::from("lib.rs"));
+        let block = test_utils::make_block_lang(
+            "test",
+            "// SPDX-License-Identifier: MIT\nfn main() {}",
+            "rust",
+        )
+        .with_target(PathBuf::from("lib.rs"));
 
         let result = hook.post_tangle("fn main() {}", &block).unwrap().unwrap();
-        assert!(result.prefix.unwrap().contains("SPDX-License-Identifier: MIT"));
+        assert!(result
+            .prefix
+            .unwrap()
+            .contains("SPDX-License-Identifier: MIT"));
     }
 
     #[test]
     fn test_post_tangle_without_target() {
         let hook = SpdxLicenseHook::new();
-        let block = test_utils::make_block_lang("test", "// SPDX-License-Identifier: MIT\nfn main() {}", "rust");
+        let block = test_utils::make_block_lang(
+            "test",
+            "// SPDX-License-Identifier: MIT\nfn main() {}",
+            "rust",
+        );
 
         let result = hook.post_tangle("fn main() {}", &block).unwrap();
         assert!(result.is_none());

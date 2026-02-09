@@ -119,8 +119,7 @@ mod tests {
         let line: Comment = serde_json::from_str("\"#\"").unwrap();
         assert_eq!(line, Comment::Line("#".to_string()));
 
-        let block: Comment =
-            serde_json::from_str(r#"{"open": "/*", "close": "*/"}"#).unwrap();
+        let block: Comment = serde_json::from_str(r#"{"open": "/*", "close": "*/"}"#).unwrap();
         assert_eq!(
             block,
             Comment::Block {

@@ -9,13 +9,13 @@ mod quarto;
 pub use quarto::{extract_quarto_options, QuartoOptions};
 
 use nom::{
-    IResult, Parser,
     branch::alt,
     bytes::complete::{escaped_transform, tag, take_while1},
     character::complete::{char, multispace0, multispace1, none_of},
     combinator::{map, opt, value},
     multi::many0,
     sequence::{delimited, preceded},
+    IResult, Parser,
 };
 
 /// A single property from a code block header.
@@ -84,14 +84,16 @@ fn parse_ident(input: &str) -> IResult<&str, &str> {
 fn parse_class(input: &str) -> IResult<&str, Property> {
     map(preceded(char('.'), parse_ident), |s: &str| {
         Property::Class(s.to_string())
-    }).parse(input)
+    })
+    .parse(input)
 }
 
 /// Parse an ID property: `#idname`
 fn parse_id(input: &str) -> IResult<&str, Property> {
     map(preceded(char('#'), parse_ident), |s: &str| {
         Property::Id(s.to_string())
-    }).parse(input)
+    })
+    .parse(input)
 }
 
 /// Parse a quoted string value with escape handling.
@@ -110,14 +112,13 @@ fn parse_quoted_string(input: &str) -> IResult<&str, String> {
             )),
         ),
         char('"'),
-    ).parse(input)
+    )
+    .parse(input)
 }
 
 /// Parse an unquoted value (no spaces or special chars).
 fn parse_unquoted_value(input: &str) -> IResult<&str, String> {
-    map(take_while1(is_ident_char), |s: &str| {
-        s.to_string()
-    }).parse(input)
+    map(take_while1(is_ident_char), |s: &str| s.to_string()).parse(input)
 }
 
 /// Parse an attribute value (quoted or unquoted).
@@ -127,17 +128,15 @@ fn parse_value(input: &str) -> IResult<&str, String> {
 
 /// Parse an attribute: `key=value` or `key="value"`
 fn parse_attribute(input: &str) -> IResult<&str, Property> {
-    map(
-        (parse_ident, char('='), parse_value),
-        |(key, _, val)| Property::Attribute(key.to_string(), val),
-    ).parse(input)
+    map((parse_ident, char('='), parse_value), |(key, _, val)| {
+        Property::Attribute(key.to_string(), val)
+    })
+    .parse(input)
 }
 
 /// Parse a plain language identifier (first word without prefix).
 fn parse_plain_class(input: &str) -> IResult<&str, Property> {
-    map(parse_ident, |s: &str| {
-        Property::Class(s.to_string())
-    }).parse(input)
+    map(parse_ident, |s: &str| Property::Class(s.to_string())).parse(input)
 }
 
 /// Parse a single property (class, id, or attribute).
@@ -174,12 +173,14 @@ fn parse_properties_inner(input: &str) -> IResult<&str, Vec<Property>> {
 pub fn parse_properties(input: &str) -> Result<Vec<Property>, crate::errors::EntangledError> {
     match parse_properties_inner(input) {
         Ok(("", props)) => Ok(props),
-        Ok((remaining, _)) => Err(crate::errors::EntangledError::InvalidProperty(
-            format!("Unexpected input: '{}'", remaining),
-        )),
-        Err(e) => Err(crate::errors::EntangledError::InvalidProperty(
-            format!("Parse error: {}", e),
-        )),
+        Ok((remaining, _)) => Err(crate::errors::EntangledError::InvalidProperty(format!(
+            "Unexpected input: '{}'",
+            remaining
+        ))),
+        Err(e) => Err(crate::errors::EntangledError::InvalidProperty(format!(
+            "Parse error: {}",
+            e
+        ))),
     }
 }
 
@@ -308,7 +309,10 @@ mod tests {
         let props = parse_properties("file=output.py").unwrap();
         assert_eq!(
             props,
-            vec![Property::Attribute("file".to_string(), "output.py".to_string())]
+            vec![Property::Attribute(
+                "file".to_string(),
+                "output.py".to_string()
+            )]
         );
     }
 
@@ -317,7 +321,10 @@ mod tests {
         let props = parse_properties("file=\"output file.py\"").unwrap();
         assert_eq!(
             props,
-            vec![Property::Attribute("file".to_string(), "output file.py".to_string())]
+            vec![Property::Attribute(
+                "file".to_string(),
+                "output file.py".to_string()
+            )]
         );
     }
 
@@ -351,7 +358,10 @@ mod tests {
         let props = parse_properties("desc=\"hello \\\"world\\\"\"").unwrap();
         assert_eq!(
             props,
-            vec![Property::Attribute("desc".to_string(), "hello \"world\"".to_string())]
+            vec![Property::Attribute(
+                "desc".to_string(),
+                "hello \"world\"".to_string()
+            )]
         );
     }
 
@@ -385,7 +395,10 @@ mod tests {
         let props = parse_properties("file=src/lib/output.rs").unwrap();
         assert_eq!(
             props,
-            vec![Property::Attribute("file".to_string(), "src/lib/output.rs".to_string())]
+            vec![Property::Attribute(
+                "file".to_string(),
+                "src/lib/output.rs".to_string()
+            )]
         );
     }
 
@@ -442,7 +455,8 @@ mod tests {
 
     #[test]
     fn test_knitr_with_quoted_values() {
-        let props = Properties::parse_knitr("{r, label=\"my-chunk\", file=\"path/to/file.R\"}").unwrap();
+        let props =
+            Properties::parse_knitr("{r, label=\"my-chunk\", file=\"path/to/file.R\"}").unwrap();
         assert_eq!(props.first_class(), Some("r"));
         assert_eq!(props.first_id(), Some("my-chunk"));
         assert_eq!(props.file(), Some("path/to/file.R"));

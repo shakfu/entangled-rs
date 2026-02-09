@@ -1,6 +1,6 @@
 //! Quarto property parsing.
 
-use super::{Properties, Property, strip_quotes};
+use super::{strip_quotes, Properties, Property};
 
 /// Quarto options extracted from `#|` comment lines.
 #[derive(Debug, Clone, Default)]

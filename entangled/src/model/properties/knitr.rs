@@ -1,6 +1,6 @@
 //! Knitr/RMarkdown property parsing.
 
-use super::{Properties, Property, strip_braces, strip_quotes};
+use super::{strip_braces, strip_quotes, Properties, Property};
 
 /// Parse knitr-style comma-separated properties.
 /// Format: `python, label=main, file=out.py, echo=FALSE`

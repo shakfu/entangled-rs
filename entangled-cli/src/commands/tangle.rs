@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use entangled::errors::Result;
 use entangled::interface::{tangle_documents, tangle_files, Context};
 
-use super::helpers::{TransactionOptions, run_transaction};
+use super::helpers::{run_transaction, TransactionOptions};
 
 /// Options for the tangle command.
 #[derive(Debug, Clone, Default)]
@@ -45,12 +45,17 @@ pub fn tangle(ctx: &mut Context, options: TangleOptions) -> Result<()> {
         tangle_files(ctx, &selected)?
     };
 
-    run_transaction(ctx, transaction, &TransactionOptions {
-        force: options.force,
-        dry_run: options.dry_run,
-        diff: options.diff,
-        quiet: options.quiet,
-    }, "tangle")
+    run_transaction(
+        ctx,
+        transaction,
+        &TransactionOptions {
+            force: options.force,
+            dry_run: options.dry_run,
+            diff: options.diff,
+            quiet: options.quiet,
+        },
+        "tangle",
+    )
 }
 
 #[cfg(test)]

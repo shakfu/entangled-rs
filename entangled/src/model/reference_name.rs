@@ -95,7 +95,10 @@ mod tests {
     #[test]
     fn test_namespaced_name() {
         let name = ReferenceName::new("module::submodule::function");
-        assert_eq!(name.namespace_parts(), vec!["module", "submodule", "function"]);
+        assert_eq!(
+            name.namespace_parts(),
+            vec!["module", "submodule", "function"]
+        );
         assert_eq!(name.base_name(), "function");
     }
 

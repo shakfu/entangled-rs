@@ -25,7 +25,10 @@ pub enum EntangledError {
     YamlParse(#[from] serde_yaml::Error),
 
     #[error("Parse error at {location}: {message}")]
-    Parse { location: TextLocation, message: String },
+    Parse {
+        location: TextLocation,
+        message: String,
+    },
 
     #[error("Reference not found: {0}")]
     ReferenceNotFound(ReferenceName),
@@ -87,10 +90,7 @@ impl EntangledError {
             | Self::CycleDetected(_)
             | Self::DuplicateReference(_)
             | Self::UnknownLanguage(_) => 4,
-            Self::Parse { .. }
-            | Self::Transaction(_)
-            | Self::Regex(_)
-            | Self::Other(_) => 5,
+            Self::Parse { .. } | Self::Transaction(_) | Self::Regex(_) | Self::Other(_) => 5,
         }
     }
 }

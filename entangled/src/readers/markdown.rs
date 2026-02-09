@@ -4,7 +4,9 @@ use std::path::{Path, PathBuf};
 
 use crate::config::Config;
 use crate::errors::Result;
-use crate::model::{CodeBlock, Properties, ReferenceId, ReferenceMap, ReferenceName, extract_quarto_options};
+use crate::model::{
+    extract_quarto_options, CodeBlock, Properties, ReferenceId, ReferenceMap, ReferenceName,
+};
 use crate::style::Style;
 use crate::text_location::TextLocation;
 
@@ -47,7 +49,11 @@ impl Default for ParsedDocument {
 }
 
 /// Parses a markdown document and extracts code blocks.
-pub fn parse_markdown(input: &str, source_path: Option<&Path>, config: &Config) -> Result<ParsedDocument> {
+pub fn parse_markdown(
+    input: &str,
+    source_path: Option<&Path>,
+    config: &Config,
+) -> Result<ParsedDocument> {
     let mut doc = ParsedDocument::new();
 
     if let Some(path) = source_path {
@@ -116,7 +122,8 @@ fn process_code_block(
         ReferenceName::from_file_path(file)
     } else {
         return Err(crate::errors::EntangledError::Other(
-            "Internal error: code block has neither ID nor file target after guard check".to_string(),
+            "Internal error: code block has neither ID nor file target after guard check"
+                .to_string(),
         ));
     };
 
@@ -128,12 +135,7 @@ fn process_code_block(
     };
 
     // Create the code block
-    let mut block = CodeBlock::new(
-        ReferenceId::first(name),
-        language,
-        content,
-        location,
-    );
+    let mut block = CodeBlock::new(ReferenceId::first(name), language, content, location);
 
     // Set target if specified
     if let Some(file) = file_target {
@@ -239,7 +241,9 @@ print('hello')
         let doc = parse_markdown(input, None, &default_config()).unwrap();
 
         assert_eq!(doc.refs.len(), 1);
-        let blocks = doc.refs.get_by_name(&ReferenceName::from_file_path("output.py"));
+        let blocks = doc
+            .refs
+            .get_by_name(&ReferenceName::from_file_path("output.py"));
         assert_eq!(blocks.len(), 1);
         assert_eq!(blocks[0].target, Some(PathBuf::from("output.py")));
     }
@@ -342,10 +346,7 @@ code
 
         let blocks = doc.refs.get_by_name(&ReferenceName::new("test.md#main"));
         assert_eq!(blocks[0].location.line, 5);
-        assert_eq!(
-            blocks[0].location.filename,
-            Some(PathBuf::from("test.md"))
-        );
+        assert_eq!(blocks[0].location.filename, Some(PathBuf::from("test.md")));
     }
 }
 
@@ -377,12 +378,26 @@ def main():
         let doc = parse_markdown(input, None, &config).unwrap();
 
         // Should have 3 blocks
-        assert_eq!(doc.refs.len(), 3, "Expected 3 blocks, got {}", doc.refs.len());
+        assert_eq!(
+            doc.refs.len(),
+            3,
+            "Expected 3 blocks, got {}",
+            doc.refs.len()
+        );
 
         // Check each block exists
-        assert!(doc.refs.contains_name(&ReferenceName::new("main")), "main not found");
-        assert!(doc.refs.contains_name(&ReferenceName::new("imports")), "imports not found");
-        assert!(doc.refs.contains_name(&ReferenceName::new("functions")), "functions not found");
+        assert!(
+            doc.refs.contains_name(&ReferenceName::new("main")),
+            "main not found"
+        );
+        assert!(
+            doc.refs.contains_name(&ReferenceName::new("imports")),
+            "imports not found"
+        );
+        assert!(
+            doc.refs.contains_name(&ReferenceName::new("functions")),
+            "functions not found"
+        );
     }
 }
 
@@ -657,7 +672,9 @@ print('hello')
         let doc = parse_markdown(input, None, &config).unwrap();
 
         assert_eq!(doc.refs.len(), 1);
-        let blocks = doc.refs.get_by_name(&ReferenceName::from_file_path("out.py"));
+        let blocks = doc
+            .refs
+            .get_by_name(&ReferenceName::from_file_path("out.py"));
         assert_eq!(blocks.len(), 1);
     }
 
@@ -672,7 +689,9 @@ print('hello')
         let doc = parse_markdown(input, None, &config).unwrap();
 
         assert_eq!(doc.refs.len(), 1);
-        let blocks = doc.refs.get_by_name(&ReferenceName::from_file_path("out.py"));
+        let blocks = doc
+            .refs
+            .get_by_name(&ReferenceName::from_file_path("out.py"));
         assert_eq!(blocks.len(), 1);
     }
 
@@ -688,7 +707,9 @@ print('hello')
         let doc = parse_markdown(input, None, &config).unwrap();
 
         assert_eq!(doc.refs.len(), 1);
-        let blocks = doc.refs.get_by_name(&ReferenceName::from_file_path("out.py"));
+        let blocks = doc
+            .refs
+            .get_by_name(&ReferenceName::from_file_path("out.py"));
         assert_eq!(blocks.len(), 1);
     }
 }

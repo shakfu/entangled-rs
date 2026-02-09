@@ -6,11 +6,11 @@ use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
+use entangled::Style;
 use entangled::config::{self, AnnotationMethod, NamespaceDefault};
 use entangled::interface::{self, Context, Document};
 use entangled::io::Transaction;
 use entangled::model::{CodeBlock, ReferenceMap, ReferenceName};
-use entangled::Style;
 
 /// Convert entangled errors to Python exceptions.
 fn to_py_err(e: entangled::errors::EntangledError) -> PyErr {
@@ -112,16 +112,17 @@ impl PyConfig {
     /// Set style from string.
     #[setter]
     fn set_style(&mut self, value: &str) -> PyResult<()> {
-        self.inner.style = value
-            .parse::<Style>()
-            .map_err(PyValueError::new_err)?;
+        self.inner.style = value.parse::<Style>().map_err(PyValueError::new_err)?;
         Ok(())
     }
 
     /// Get output directory.
     #[getter]
     fn output_dir(&self) -> Option<String> {
-        self.inner.output_dir.as_ref().map(|p| p.display().to_string())
+        self.inner
+            .output_dir
+            .as_ref()
+            .map(|p| p.display().to_string())
     }
 
     /// Set output directory.
@@ -266,7 +267,8 @@ impl PyContext {
     /// Create context with default config for a specific directory.
     #[staticmethod]
     fn default_for_dir(path: &str) -> PyResult<Self> {
-        let ctx = Context::default_for_dir(PathBuf::from(path)).map_err(|e| PyIOError::new_err(e.to_string()))?;
+        let ctx = Context::default_for_dir(PathBuf::from(path))
+            .map_err(|e| PyIOError::new_err(e.to_string()))?;
         Ok(PyContext { inner: ctx })
     }
 
@@ -412,9 +414,8 @@ impl PyDocument {
     #[pyo3(signature = (content, path=None, config=None))]
     fn parse(content: &str, path: Option<&str>, config: Option<PyConfig>) -> PyResult<Self> {
         let cfg = config.map(|c| c.inner).unwrap_or_default();
-        let doc =
-            entangled::readers::parse_markdown(content, path.map(std::path::Path::new), &cfg)
-                .map_err(to_py_err)?;
+        let doc = entangled::readers::parse_markdown(content, path.map(std::path::Path::new), &cfg)
+            .map_err(to_py_err)?;
         Ok(PyDocument {
             path: path.map(String::from),
             refs: doc.refs,

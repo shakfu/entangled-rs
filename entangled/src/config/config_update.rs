@@ -90,11 +90,11 @@ impl ConfigUpdate {
             ),
             watch: self.watch.unwrap_or_else(|| base.watch.clone()),
             hooks: merge_hooks(&base.hooks, self.hooks.as_ref()),
-            filedb_path: self
-                .filedb_path
-                .unwrap_or_else(|| base.filedb_path.clone()),
+            filedb_path: self.filedb_path.unwrap_or_else(|| base.filedb_path.clone()),
             style: self.style.unwrap_or(base.style),
-            strip_quarto_options: self.strip_quarto_options.unwrap_or(base.strip_quarto_options),
+            strip_quarto_options: self
+                .strip_quarto_options
+                .unwrap_or(base.strip_quarto_options),
             extra: base.extra.clone(),
         }
     }

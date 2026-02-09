@@ -103,10 +103,7 @@ impl Context {
     /// Each filter path is resolved relative to `base_dir` and compared
     /// against the full set of source files. Returns an error if any
     /// filter path does not match a known source file.
-    pub fn source_files_filtered(
-        &self,
-        filter: &[PathBuf],
-    ) -> crate::errors::Result<Vec<PathBuf>> {
+    pub fn source_files_filtered(&self, filter: &[PathBuf]) -> crate::errors::Result<Vec<PathBuf>> {
         let all_files = self.source_files()?;
         let resolved_filters: Vec<PathBuf> = filter
             .iter()
@@ -141,10 +138,7 @@ impl Context {
     /// Only files that are both matched by a glob AND present in
     /// `source_files()` are returned. Returns an error if a pattern
     /// matches no source files.
-    pub fn source_files_glob(
-        &self,
-        patterns: &[String],
-    ) -> crate::errors::Result<Vec<PathBuf>> {
+    pub fn source_files_glob(&self, patterns: &[String]) -> crate::errors::Result<Vec<PathBuf>> {
         let all_files = self.source_files()?;
         let mut matched = Vec::new();
         for pattern in patterns {
@@ -212,7 +206,11 @@ mod tests {
         let ctx = Context::default_for_dir(dir.path().to_path_buf()).unwrap();
         let files = ctx.source_files().unwrap();
 
-        assert!(files.iter().any(|p| p.to_string_lossy().contains("test.md")));
-        assert!(!files.iter().any(|p| p.to_string_lossy().contains("other.txt")));
+        assert!(files
+            .iter()
+            .any(|p| p.to_string_lossy().contains("test.md")));
+        assert!(!files
+            .iter()
+            .any(|p| p.to_string_lossy().contains("other.txt")));
     }
 }

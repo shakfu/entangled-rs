@@ -51,11 +51,9 @@ pub fn read_annotated_code(
 
         if let Some(caps) = BEGIN_PATTERN.captures(line) {
             let ref_str = &caps["ref"];
-            let id = ReferenceId::parse(ref_str).ok_or_else(|| {
-                EntangledError::Parse {
-                    location: TextLocation::line_only(line_number),
-                    message: format!("Invalid reference ID: {}", ref_str),
-                }
+            let id = ReferenceId::parse(ref_str).ok_or_else(|| EntangledError::Parse {
+                location: TextLocation::line_only(line_number),
+                message: format!("Invalid reference ID: {}", ref_str),
             })?;
 
             // Calculate indent from the line

@@ -200,7 +200,10 @@ print('hello')
         )
         .unwrap();
 
-        let options = StatusOptions { verbose: true, json: false };
+        let options = StatusOptions {
+            verbose: true,
+            json: false,
+        };
         status(&ctx, options).unwrap();
     }
 
@@ -219,7 +222,10 @@ print('hello')
         )
         .unwrap();
 
-        let options = StatusOptions { verbose: false, json: true };
+        let options = StatusOptions {
+            verbose: false,
+            json: true,
+        };
         status(&ctx, options).unwrap();
     }
 }

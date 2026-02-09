@@ -77,7 +77,6 @@ impl InputToken {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

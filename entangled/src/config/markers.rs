@@ -90,9 +90,8 @@ impl Markers {
 }
 
 /// Reference pattern for detecting noweb-style references like `<<refname>>`.
-pub static REF_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^(?P<indent>\s*)<<(?P<refname>[\w:/_.-]+)>>\s*$").unwrap()
-});
+pub static REF_PATTERN: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^(?P<indent>\s*)<<(?P<refname>[\w:/_.-]+)>>\s*$").unwrap());
 
 /// Annotation prefix pattern.
 pub static ANNOTATION_PREFIX: &str = "~/~";
@@ -109,7 +108,12 @@ pub fn annotation_begin(comment_prefix: &str, markers: &Markers, reference: &str
 
 /// Creates a full annotation end marker.
 pub fn annotation_end(comment_prefix: &str, markers: &Markers) -> String {
-    format!("{} {} {}", comment_prefix, ANNOTATION_PREFIX, markers.format_end())
+    format!(
+        "{} {} {}",
+        comment_prefix,
+        ANNOTATION_PREFIX,
+        markers.format_end()
+    )
 }
 
 #[cfg(test)]

@@ -94,13 +94,20 @@ mod tests {
 
         let result = hook.pre_tangle(&block).unwrap().unwrap();
         assert_eq!(result.source, "echo hello");
-        assert_eq!(result.metadata[0], ("shebang".to_string(), "#!/bin/bash".to_string()));
+        assert_eq!(
+            result.metadata[0],
+            ("shebang".to_string(), "#!/bin/bash".to_string())
+        );
     }
 
     #[test]
     fn test_post_tangle_with_target() {
         let hook = ShebangHook::new();
-        let block = test_utils::make_block_with_target("test", "#!/usr/bin/env python\nprint('hello')", "script.py");
+        let block = test_utils::make_block_with_target(
+            "test",
+            "#!/usr/bin/env python\nprint('hello')",
+            "script.py",
+        );
 
         let result = hook.post_tangle("print('hello')", &block).unwrap().unwrap();
         assert_eq!(result.prefix, Some("#!/usr/bin/env python".to_string()));

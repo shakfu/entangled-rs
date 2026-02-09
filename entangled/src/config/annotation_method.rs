@@ -20,7 +20,10 @@ pub enum AnnotationMethod {
 impl AnnotationMethod {
     /// Returns true if this method produces annotations.
     pub fn has_annotations(&self) -> bool {
-        matches!(self, AnnotationMethod::Standard | AnnotationMethod::Supplemental)
+        matches!(
+            self,
+            AnnotationMethod::Standard | AnnotationMethod::Supplemental
+        )
     }
 }
 

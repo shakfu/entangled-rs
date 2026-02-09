@@ -95,16 +95,34 @@ mod tests {
 
     #[test]
     fn test_from_extension_qmd() {
-        assert_eq!(Style::from_extension(Path::new("doc.qmd")), Some(Style::Quarto));
-        assert_eq!(Style::from_extension(Path::new("path/to/doc.qmd")), Some(Style::Quarto));
-        assert_eq!(Style::from_extension(Path::new("DOC.QMD")), Some(Style::Quarto));
+        assert_eq!(
+            Style::from_extension(Path::new("doc.qmd")),
+            Some(Style::Quarto)
+        );
+        assert_eq!(
+            Style::from_extension(Path::new("path/to/doc.qmd")),
+            Some(Style::Quarto)
+        );
+        assert_eq!(
+            Style::from_extension(Path::new("DOC.QMD")),
+            Some(Style::Quarto)
+        );
     }
 
     #[test]
     fn test_from_extension_rmd() {
-        assert_eq!(Style::from_extension(Path::new("doc.Rmd")), Some(Style::Knitr));
-        assert_eq!(Style::from_extension(Path::new("doc.rmd")), Some(Style::Knitr));
-        assert_eq!(Style::from_extension(Path::new("path/to/doc.Rmd")), Some(Style::Knitr));
+        assert_eq!(
+            Style::from_extension(Path::new("doc.Rmd")),
+            Some(Style::Knitr)
+        );
+        assert_eq!(
+            Style::from_extension(Path::new("doc.rmd")),
+            Some(Style::Knitr)
+        );
+        assert_eq!(
+            Style::from_extension(Path::new("path/to/doc.Rmd")),
+            Some(Style::Knitr)
+        );
     }
 
     #[test]
@@ -122,28 +140,49 @@ mod tests {
     #[test]
     fn test_for_document_qmd() {
         let path = Path::new("doc.qmd");
-        assert_eq!(Style::for_document(Some(path), Style::EntangledRs), Style::Quarto);
-        assert_eq!(Style::for_document(Some(path), Style::Pandoc), Style::Quarto);
+        assert_eq!(
+            Style::for_document(Some(path), Style::EntangledRs),
+            Style::Quarto
+        );
+        assert_eq!(
+            Style::for_document(Some(path), Style::Pandoc),
+            Style::Quarto
+        );
     }
 
     #[test]
     fn test_for_document_rmd() {
         let path = Path::new("doc.Rmd");
-        assert_eq!(Style::for_document(Some(path), Style::EntangledRs), Style::Knitr);
+        assert_eq!(
+            Style::for_document(Some(path), Style::EntangledRs),
+            Style::Knitr
+        );
         assert_eq!(Style::for_document(Some(path), Style::Quarto), Style::Knitr);
     }
 
     #[test]
     fn test_for_document_md_uses_default() {
         let path = Path::new("doc.md");
-        assert_eq!(Style::for_document(Some(path), Style::EntangledRs), Style::EntangledRs);
-        assert_eq!(Style::for_document(Some(path), Style::Pandoc), Style::Pandoc);
-        assert_eq!(Style::for_document(Some(path), Style::Quarto), Style::Quarto);
+        assert_eq!(
+            Style::for_document(Some(path), Style::EntangledRs),
+            Style::EntangledRs
+        );
+        assert_eq!(
+            Style::for_document(Some(path), Style::Pandoc),
+            Style::Pandoc
+        );
+        assert_eq!(
+            Style::for_document(Some(path), Style::Quarto),
+            Style::Quarto
+        );
     }
 
     #[test]
     fn test_for_document_no_path() {
-        assert_eq!(Style::for_document(None, Style::EntangledRs), Style::EntangledRs);
+        assert_eq!(
+            Style::for_document(None, Style::EntangledRs),
+            Style::EntangledRs
+        );
         assert_eq!(Style::for_document(None, Style::Quarto), Style::Quarto);
     }
 
@@ -167,7 +206,12 @@ mod tests {
 
     #[test]
     fn test_serde_roundtrip() {
-        let styles = [Style::EntangledRs, Style::Pandoc, Style::Quarto, Style::Knitr];
+        let styles = [
+            Style::EntangledRs,
+            Style::Pandoc,
+            Style::Quarto,
+            Style::Knitr,
+        ];
         for style in styles {
             let json = serde_json::to_string(&style).unwrap();
             let parsed: Style = serde_json::from_str(&json).unwrap();

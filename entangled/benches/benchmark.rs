@@ -1,6 +1,6 @@
 //! Performance benchmarks for Entangled
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
 use entangled::config::{Config, NamespaceDefault};
 use entangled::model::{tangle_ref, CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
 use entangled::readers::parse_markdown;
@@ -32,7 +32,11 @@ fn generate_nested_markdown(depth: usize, breadth: usize) -> String {
     let mut md = String::from("# Nested Benchmark\n\n");
 
     fn generate_block(md: &mut String, prefix: &str, depth: usize, breadth: usize, is_root: bool) {
-        let name = if prefix.is_empty() { "main".to_string() } else { prefix.to_string() };
+        let name = if prefix.is_empty() {
+            "main".to_string()
+        } else {
+            prefix.to_string()
+        };
         let file_attr = if is_root { " file=output.py" } else { "" };
 
         md.push_str(&format!("```python #{}{}\n", name, file_attr));
@@ -76,15 +80,9 @@ fn bench_parse_markdown(c: &mut Criterion) {
 
     for num_blocks in [10, 50, 100, 500].iter() {
         let md = generate_markdown(*num_blocks, 10);
-        group.bench_with_input(
-            BenchmarkId::new("blocks", num_blocks),
-            &md,
-            |b, md| {
-                b.iter(|| {
-                    parse_markdown(black_box(md), None, &config).unwrap()
-                })
-            },
-        );
+        group.bench_with_input(BenchmarkId::new("blocks", num_blocks), &md, |b, md| {
+            b.iter(|| parse_markdown(black_box(md), None, &config).unwrap())
+        });
     }
 
     group.finish();

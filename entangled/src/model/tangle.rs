@@ -129,8 +129,14 @@ pub fn tangle_annotated(
                 let combined_indent = format!("{}{}", base_indent, indent);
 
                 let ref_name = ReferenceName::new(refname);
-                let expanded =
-                    tangle_annotated(refs, &ref_name, &combined_indent, comment, markers, detector)?;
+                let expanded = tangle_annotated(
+                    refs,
+                    &ref_name,
+                    &combined_indent,
+                    comment,
+                    markers,
+                    detector,
+                )?;
                 output.push(expanded);
             } else {
                 output.push(format!("{}{}", base_indent, line));
@@ -196,10 +202,7 @@ mod tests {
         refs.insert(make_block("deepest", "print('deep')"));
 
         let result = tangle_ref(&refs, &ReferenceName::new("main"), None, None).unwrap();
-        assert_eq!(
-            result,
-            "if True:\n    if True:\n        print('deep')"
-        );
+        assert_eq!(result, "if True:\n    if True:\n        print('deep')");
     }
 
     #[test]
@@ -221,8 +224,13 @@ mod tests {
         let comment = Comment::line("#");
         let markers = Markers::default();
 
-        let result =
-            tangle_ref(&refs, &ReferenceName::new("main"), Some(&comment), Some(&markers)).unwrap();
+        let result = tangle_ref(
+            &refs,
+            &ReferenceName::new("main"),
+            Some(&comment),
+            Some(&markers),
+        )
+        .unwrap();
 
         assert!(result.contains("# ~/~ begin <<main[0]>>"));
         assert!(result.contains("print('hello')"));
@@ -238,8 +246,13 @@ mod tests {
         let comment = Comment::line("#");
         let markers = Markers::default();
 
-        let result =
-            tangle_ref(&refs, &ReferenceName::new("main"), Some(&comment), Some(&markers)).unwrap();
+        let result = tangle_ref(
+            &refs,
+            &ReferenceName::new("main"),
+            Some(&comment),
+            Some(&markers),
+        )
+        .unwrap();
 
         assert!(result.contains("# ~/~ begin <<main[0]>>"));
         assert!(result.contains("    # ~/~ begin <<body[0]>>"));

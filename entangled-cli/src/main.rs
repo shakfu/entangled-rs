@@ -13,12 +13,17 @@ use entangled::Style;
 
 #[derive(Parser)]
 #[command(name = "entangled")]
-#[command(author, version, about = "Literate programming engine", long_about = "\
+#[command(
+    author,
+    version,
+    about = "Literate programming engine",
+    long_about = "\
 Literate programming engine that keeps code and documentation in sync.\n\n\
   tangle  - extract code from markdown files into source files\n\
   stitch  - update markdown from modified source files\n\
   sync    - bidirectional sync (stitch then tangle)\n\
-  watch   - auto-sync on file changes")]
+  watch   - auto-sync on file changes"
+)]
 struct Cli {
     /// Configuration file path
     #[arg(short, long, global = true)]
@@ -264,7 +269,11 @@ fn main() -> ExitCode {
             commands::stitch(&mut ctx, options)
         }
 
-        Commands::Sync { force, dry_run, diff } => {
+        Commands::Sync {
+            force,
+            dry_run,
+            diff,
+        } => {
             let options = commands::SyncOptions {
                 force,
                 dry_run,
@@ -304,7 +313,10 @@ fn main() -> ExitCode {
                 Some((f, l)) => match l.parse::<usize>() {
                     Ok(n) if n > 0 => (PathBuf::from(f), n),
                     _ => {
-                        eprintln!("Invalid line number in '{}'. Expected format: file:line", location);
+                        eprintln!(
+                            "Invalid line number in '{}'. Expected format: file:line",
+                            location
+                        );
                         return ExitCode::FAILURE;
                     }
                 },
