@@ -159,7 +159,7 @@ Available styles: `entangled-rs`, `pandoc`, `quarto`, `knitr`
 ### Tangle Options
 
 ```bash
-entangled tangle [OPTIONS] [FILES...]
+entangled tangle [OPTIONS] [-g PATTERN]... [FILES...]
 ```
 
 | Option | Description |
@@ -167,11 +167,12 @@ entangled tangle [OPTIONS] [FILES...]
 | `-f, --force` | Force overwrite modified files |
 | `-n, --dry-run` | Show what would be done |
 | `-d, --diff` | Show unified diffs of what would change |
+| `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
 ### Stitch Options
 
 ```bash
-entangled stitch [OPTIONS] [FILES...]
+entangled stitch [OPTIONS] [-g PATTERN]... [FILES...]
 ```
 
 | Option | Description |
@@ -179,6 +180,7 @@ entangled stitch [OPTIONS] [FILES...]
 | `-f, --force` | Force overwrite modified files |
 | `-n, --dry-run` | Show what would be done |
 | `-d, --diff` | Show unified diffs of what would change |
+| `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
 ### Sync Options
 

@@ -18,6 +18,8 @@ pub struct TangleOptions {
     pub diff: bool,
     /// Suppress normal output.
     pub quiet: bool,
+    /// Glob patterns to filter source files.
+    pub glob: Vec<String>,
     /// Specific files to tangle (empty means all).
     pub files: Vec<PathBuf>,
 }
@@ -26,11 +28,21 @@ pub struct TangleOptions {
 pub fn tangle(ctx: &mut Context, options: TangleOptions) -> Result<()> {
     tracing::info!("Tangling documents...");
 
-    let transaction = if options.files.is_empty() {
+    let has_filters = !options.files.is_empty() || !options.glob.is_empty();
+
+    let transaction = if !has_filters {
         tangle_documents(ctx)?
     } else {
-        let filtered = ctx.source_files_filtered(&options.files)?;
-        tangle_files(ctx, &filtered)?
+        let mut selected = Vec::new();
+        if !options.files.is_empty() {
+            selected.extend(ctx.source_files_filtered(&options.files)?);
+        }
+        if !options.glob.is_empty() {
+            selected.extend(ctx.source_files_glob(&options.glob)?);
+        }
+        selected.sort();
+        selected.dedup();
+        tangle_files(ctx, &selected)?
     };
 
     run_transaction(ctx, transaction, &TransactionOptions {
@@ -72,6 +84,48 @@ print('hello')
 
         let content = fs::read_to_string(output_path).unwrap();
         assert!(content.contains("print('hello')"));
+    }
+
+    #[test]
+    fn test_tangle_glob() {
+        let dir = tempdir().unwrap();
+        fs::create_dir(dir.path().join("docs")).unwrap();
+        fs::create_dir(dir.path().join("other")).unwrap();
+
+        fs::write(
+            dir.path().join("docs/a.md"),
+            "```python #main file=a.py\nprint('a')\n```\n",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("other/b.md"),
+            "```python #main file=b.py\nprint('b')\n```\n",
+        )
+        .unwrap();
+
+        let mut ctx = Context::default_for_dir(dir.path().to_path_buf()).unwrap();
+        let options = TangleOptions {
+            glob: vec!["docs/*.md".to_string()],
+            ..Default::default()
+        };
+        tangle(&mut ctx, options).unwrap();
+
+        assert!(dir.path().join("a.py").exists());
+        assert!(!dir.path().join("b.py").exists());
+    }
+
+    #[test]
+    fn test_tangle_glob_no_match() {
+        let dir = tempdir().unwrap();
+        fs::write(dir.path().join("test.md"), "# hello\n").unwrap();
+
+        let mut ctx = Context::default_for_dir(dir.path().to_path_buf()).unwrap();
+        let options = TangleOptions {
+            glob: vec!["nonexistent/*.md".to_string()],
+            ..Default::default()
+        };
+        let result = tangle(&mut ctx, options);
+        assert!(result.is_err());
     }
 
     #[test]

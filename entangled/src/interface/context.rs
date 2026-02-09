@@ -136,6 +136,33 @@ impl Context {
         Ok(result)
     }
 
+    /// Returns source files matching any of the given glob patterns.
+    ///
+    /// Only files that are both matched by a glob AND present in
+    /// `source_files()` are returned. Returns an error if a pattern
+    /// matches no source files.
+    pub fn source_files_glob(
+        &self,
+        patterns: &[String],
+    ) -> crate::errors::Result<Vec<PathBuf>> {
+        let all_files = self.source_files()?;
+        let mut matched = Vec::new();
+        for pattern in patterns {
+            let expanded = self.file_cache.glob(pattern)?;
+            let before = matched.len();
+            matched.extend(expanded.into_iter().filter(|p| all_files.contains(p)));
+            if matched.len() == before {
+                return Err(crate::errors::EntangledError::Config(format!(
+                    "Glob pattern '{}' matched no source files",
+                    pattern
+                )));
+            }
+        }
+        matched.sort();
+        matched.dedup();
+        Ok(matched)
+    }
+
     /// Resolves a path relative to the base directory.
     pub fn resolve_path(&self, path: &std::path::Path) -> PathBuf {
         if path.is_absolute() {

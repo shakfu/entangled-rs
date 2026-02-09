@@ -107,6 +107,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `#[must_use]` on pure constructors: `ReferenceMap::new()`, `CycleDetector::new()`, `Transaction::new()`, `FileDB::new()`, `HookRegistry::new()`, `Config::new()`, `ParsedDocument::new()`
 - `Debug`/`Clone` derives on `Context`, `Document`, `HookRegistry`, `ParsedDocument`, `AnnotatedBlock`
 - `Context::source_files_filtered()` for file-specific tangle/stitch operations
+- `Context::source_files_glob()` for glob-based file filtering
+- `-g` / `--glob` option on `tangle` and `stitch` commands for filtering source files by glob pattern (e.g., `entangled tangle -g "docs/*.md"`)
 
 #### Code Quality
 - Shared `test_utils` module with `make_block` helpers (was duplicated across 5 test modules)

@@ -60,6 +60,10 @@ enum Commands {
         #[arg(short, long)]
         diff: bool,
 
+        /// Glob patterns to filter source files
+        #[arg(short = 'g', long = "glob")]
+        glob: Vec<String>,
+
         /// Specific files to tangle
         #[arg(value_name = "FILE")]
         files: Vec<PathBuf>,
@@ -78,6 +82,10 @@ enum Commands {
         /// Show unified diffs of what would change
         #[arg(short, long)]
         diff: bool,
+
+        /// Glob patterns to filter source files
+        #[arg(short = 'g', long = "glob")]
+        glob: Vec<String>,
 
         /// Specific files to stitch
         #[arg(value_name = "FILE")]
@@ -224,6 +232,7 @@ fn main() -> ExitCode {
             force,
             dry_run,
             diff,
+            glob,
             files,
         } => {
             let options = commands::TangleOptions {
@@ -231,6 +240,7 @@ fn main() -> ExitCode {
                 dry_run,
                 diff,
                 quiet: cli.quiet,
+                glob,
                 files,
             };
             commands::tangle(&mut ctx, options)
@@ -240,6 +250,7 @@ fn main() -> ExitCode {
             force,
             dry_run,
             diff,
+            glob,
             files,
         } => {
             let options = commands::StitchOptions {
@@ -247,6 +258,7 @@ fn main() -> ExitCode {
                 dry_run,
                 diff,
                 quiet: cli.quiet,
+                glob,
                 files,
             };
             commands::stitch(&mut ctx, options)
