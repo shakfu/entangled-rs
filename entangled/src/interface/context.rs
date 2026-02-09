@@ -190,9 +190,10 @@ mod tests {
         let resolved = ctx.resolve_path(relative);
         assert_eq!(resolved, dir.path().join("src/main.rs"));
 
-        let absolute = std::path::Path::new("/absolute/path");
-        let resolved = ctx.resolve_path(absolute);
-        assert_eq!(resolved, std::path::PathBuf::from("/absolute/path"));
+        // Use the tempdir itself as a known-absolute path for cross-platform correctness
+        let absolute = dir.path().join("absolute/path");
+        let resolved = ctx.resolve_path(&absolute);
+        assert_eq!(resolved, absolute);
     }
 
     #[test]
