@@ -344,7 +344,7 @@ style = "entangled-rs"
 strip_quarto_options = true
 
 # How to annotate output files
-# Options: "standard", "naked", "supplemental"
+# Options: "standard", "naked", "bare", "supplemental"
 annotation = "standard"
 
 # Default namespace for code block IDs
@@ -383,9 +383,10 @@ Note: `.qmd` and `.Rmd` files always use their native styles regardless of confi
 
 | Method | Description |
 |--------|-------------|
-| `standard` | Add `# ~/~ begin/end` markers |
-| `naked` | No annotations, raw code only |
-| `supplemental` | Annotations for documentation output |
+| `standard` | Add `# ~/~ begin/end` markers (supports stitch) |
+| `naked` | No annotations, raw code only (one-way) |
+| `bare` | Blank lines between block boundaries (one-way) |
+| `supplemental` | Annotations for documentation output (supports stitch) |
 
 ### Output Directory
 
@@ -427,6 +428,8 @@ The format is:
 - `# ~/~ end` - End of block
 
 Comment prefix varies by language (`//`, `--`, `/* */`, etc.).
+
+With `annotation = "bare"`, markers are replaced by blank lines, giving clean output with breathing room between blocks. With `annotation = "naked"`, markers are omitted entirely. Both modes are one-way (no stitch support).
 
 ## Project Structure
 

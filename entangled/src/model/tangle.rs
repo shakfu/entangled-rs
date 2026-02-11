@@ -152,10 +152,100 @@ pub fn tangle_annotated(
     Ok(output.join("\n"))
 }
 
+/// Tangles a reference with blank-line separators between blocks (bare output).
+///
+/// Like `tangle_annotated` but emits blank lines instead of marker comments,
+/// then collapses consecutive blank lines and trims leading/trailing blanks.
+pub fn tangle_bare(
+    refs: &ReferenceMap,
+    name: &ReferenceName,
+    base_indent: &str,
+    detector: &mut CycleDetector,
+) -> Result<String> {
+    detector.enter(name)?;
+
+    let ids = refs.get_ids_by_name(name);
+    if ids.is_empty() {
+        detector.exit();
+        return Err(EntangledError::ReferenceNotFound(name.clone()));
+    }
+
+    let mut output = Vec::new();
+
+    for id in ids {
+        let block = refs.get(id).ok_or_else(|| {
+            EntangledError::Other(format!(
+                "Internal error: ReferenceMap has ID {} in name index but not in block storage",
+                id
+            ))
+        })?;
+
+        // Blank line as block separator
+        output.push(String::new());
+
+        // Process source lines
+        for line in block.source.lines() {
+            if let Some(caps) = REF_PATTERN.captures(line) {
+                let indent = &caps["indent"];
+                let refname = &caps["refname"];
+                let combined_indent = format!("{}{}", base_indent, indent);
+
+                let ref_name = ReferenceName::new(refname);
+                let expanded = tangle_bare(refs, &ref_name, &combined_indent, detector)?;
+                output.push(expanded);
+            } else {
+                output.push(format!("{}{}", base_indent, line));
+            }
+        }
+
+        // Blank line as block separator
+        output.push(String::new());
+    }
+
+    detector.exit();
+    let joined = output.join("\n");
+    Ok(collapse_blank_lines(&joined))
+}
+
+/// Collapses runs of 2+ consecutive blank lines into a single blank line,
+/// and trims leading/trailing blank lines.
+fn collapse_blank_lines(s: &str) -> String {
+    let mut result = Vec::new();
+    let mut prev_blank = false;
+
+    for line in s.lines() {
+        let is_blank = line.trim().is_empty();
+        if is_blank {
+            if !prev_blank {
+                result.push("");
+            }
+            prev_blank = true;
+        } else {
+            result.push(line);
+            prev_blank = false;
+        }
+    }
+
+    // Trim leading/trailing blank lines
+    while result.first() == Some(&"") {
+        result.remove(0);
+    }
+    while result.last() == Some(&"") {
+        result.pop();
+    }
+
+    result.join("\n")
+}
+
 /// Tangles a single reference (entry point).
 ///
 /// This is a convenience function that creates a cycle detector and tangles
 /// with or without annotations based on the `annotated` parameter.
+///
+/// Dispatch:
+/// - `(Some(comment), Some(markers))` → annotated output
+/// - `(None, Some(markers))` → bare output (blank-line separators)
+/// - `_` → naked output
 pub fn tangle_ref(
     refs: &ReferenceMap,
     name: &ReferenceName,
@@ -166,6 +256,7 @@ pub fn tangle_ref(
 
     match (comment, markers) {
         (Some(c), Some(m)) => tangle_annotated(refs, name, "", c, m, &mut detector),
+        (None, Some(_)) => tangle_bare(refs, name, "", &mut detector),
         _ => tangle_naked(refs, name, "", &mut detector),
     }
 }
@@ -276,6 +367,65 @@ mod tests {
         let refs = ReferenceMap::new();
         let result = tangle_ref(&refs, &ReferenceName::new("nonexistent"), None, None);
         assert!(matches!(result, Err(EntangledError::ReferenceNotFound(_))));
+    }
+
+    #[test]
+    fn test_tangle_bare_simple() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "print('hello')"));
+
+        let markers = Markers::default();
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, Some(&markers)).unwrap();
+        assert_eq!(result, "print('hello')");
+        // No annotation markers
+        assert!(!result.contains("~/~"));
+    }
+
+    #[test]
+    fn test_tangle_bare_multiple_blocks() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "line1"));
+        refs.insert(make_block("main", "line2"));
+
+        let markers = Markers::default();
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, Some(&markers)).unwrap();
+        // Blocks separated by a single blank line
+        assert_eq!(result, "line1\n\nline2");
+    }
+
+    #[test]
+    fn test_tangle_bare_with_reference() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "def main():\n    <<body>>"));
+        refs.insert(make_block("body", "print('hello')"));
+
+        let markers = Markers::default();
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, Some(&markers)).unwrap();
+        assert!(result.contains("def main():"));
+        assert!(result.contains("    print('hello')"));
+        assert!(!result.contains("~/~"));
+    }
+
+    #[test]
+    fn test_tangle_bare_adjacent_references() {
+        let mut refs = ReferenceMap::new();
+        refs.insert(make_block("main", "<<a>>\n<<b>>"));
+        refs.insert(make_block("a", "alpha"));
+        refs.insert(make_block("b", "beta"));
+
+        let markers = Markers::default();
+        let result = tangle_ref(&refs, &ReferenceName::new("main"), None, Some(&markers)).unwrap();
+        assert!(result.contains("alpha"));
+        assert!(result.contains("beta"));
+        assert!(!result.contains("~/~"));
+    }
+
+    #[test]
+    fn test_collapse_blank_lines() {
+        assert_eq!(collapse_blank_lines("a\n\n\n\nb"), "a\n\nb");
+        assert_eq!(collapse_blank_lines("\n\na\n\nb\n\n"), "a\n\nb");
+        assert_eq!(collapse_blank_lines("a\nb"), "a\nb");
+        assert_eq!(collapse_blank_lines(""), "");
     }
 
     #[test]
