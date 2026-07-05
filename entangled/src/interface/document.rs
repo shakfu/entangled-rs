@@ -232,7 +232,7 @@ pub fn stitch_files(ctx: &Context, source_files: &[PathBuf]) -> Result<Transacti
 
         // Sort by start line descending -- apply from bottom to top
         // so earlier line numbers remain valid after splicing
-        changes.sort_by(|a, b| b.0.cmp(&a.0));
+        changes.sort_by_key(|c| std::cmp::Reverse(c.0));
 
         let mut new_lines: Vec<String> = lines.iter().map(|l| l.to_string()).collect();
 

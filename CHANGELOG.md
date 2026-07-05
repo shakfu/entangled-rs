@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### Weave: documentation output
+
+- **`entangled weave` command** renders literate documents to human-readable
+  output, closing the second half of the literate-programming loop (tangle
+  produces code; weave produces the typeset document).
+- **Two-layer design**: a renderer-agnostic transform (`entangled::weave`) plus
+  pluggable backends. The transform annotates each code block with a caption
+  (name and target file), continuation markers for same-named blocks, resolved
+  `<<reference>>` cross-references, and a "used by" back-reference set.
+- **Native HTML backend**: self-contained, offline, theme-aware
+  (`prefers-color-scheme`) output. Prose is rendered with `pulldown-cmark`;
+  `<<references>>` become intra-document links to the defining block, and each
+  block shows a "used in" footer. No external tools required.
+- **Syntax highlighting**: code blocks are highlighted server-side with `syntect`
+  (pure-Rust `fancy-regex` backend) using class-based spans and an embedded
+  light/dark theme stylesheet. Gated behind the default-on `highlight` cargo
+  feature; building with `--no-default-features` drops the dependency and falls
+  back to plain `language-xxx`-classed code. Reference lines are left unhighlighted
+  so their cross-reference links are preserved.
+- **Native clean-markdown backend**: emits portable Pandoc/Quarto-ready markdown
+  with Entangled attributes replaced by readable captions. Drives the `markdown`
+  and `quarto` (`.qmd`) targets.
+- **Pandoc passthrough**: any other `--to` format (`pdf`, `latex`, `docx`,
+  `epub`, ...) is produced by piping the clean markdown through `pandoc`.
+- **Options**: `--to/-t`, `--output/-o` (with `-` for stdout on text targets),
+  `--fragment` (HTML body only), `--pandoc <path>`, plus `-g/--glob` and file
+  filters matching the other commands.
+- **Library API**: `weave_document`, `weave_to_html`, `weave_to_markdown`,
+  `WovenDocument`, and `HtmlOptions` are exported from the `entangled` crate.
+
 #### Multi-Style Code Block Syntax Support
 - **Style enum**: Support for four code block syntax styles:
   - `entangled-rs` (default): Native style with `python #name file=path`
@@ -125,6 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `WatchConfig::default()` now returns `debounce_ms: 100` (was 0 due to `#[derive(Default)]` on u64; serde default and programmatic default are now consistent)
+- **`source_files_filtered` path matching**: explicit-file filters (e.g. `tangle FILE`, `stitch FILE`, `weave FILE`) previously failed with "not a source file" because base-dir-joined filter paths were compared against base-dir-relative source paths. Both sides are now resolved to absolute form before comparison, so relative and absolute filters match correctly.
+- **Clippy lints**: resolved two warnings flagged by newer clippy toolchains (`sort_by` -> `sort_by_key` with `Reverse` in the stitch splice; manual loop counter -> `enumerate()` in the YAML header reader). No behavior change.
 
 #### Configuration
 - Default `source_patterns` now includes `**/*.qmd` and `**/*.Rmd`

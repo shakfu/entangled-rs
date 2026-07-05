@@ -27,16 +27,16 @@ pub fn extract_yaml_header(input: &str) -> Option<YamlHeader> {
     }
 
     let mut content_lines = Vec::new();
-    let mut line_count = 1;
 
-    // Collect until closing ---
-    for line in lines {
-        line_count += 1;
+    // Collect until closing ---. The opening `---` was already consumed above,
+    // so `idx == 0` is the second line of the document; `lines_consumed` counts
+    // both delimiters, hence `idx + 2`.
+    for (idx, line) in lines.enumerate() {
         if line.trim() == "---" {
             return Some(YamlHeader {
                 content: content_lines.join("\n"),
                 location: TextLocation::line_only(1),
-                lines_consumed: line_count,
+                lines_consumed: idx + 2,
             });
         }
         content_lines.push(line);

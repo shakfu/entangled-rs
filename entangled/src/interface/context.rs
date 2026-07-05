@@ -104,27 +104,24 @@ impl Context {
     /// against the full set of source files. Returns an error if any
     /// filter path does not match a known source file.
     pub fn source_files_filtered(&self, filter: &[PathBuf]) -> crate::errors::Result<Vec<PathBuf>> {
+        // `source_files()` returns paths relative to `base_dir`, while a filter
+        // may be given as relative or absolute. Compare both after resolving to
+        // absolute form so a match succeeds regardless of how each side is
+        // expressed, then return the original (relative) source path so
+        // downstream reads resolve correctly.
         let all_files = self.source_files()?;
-        let resolved_filters: Vec<PathBuf> = filter
-            .iter()
-            .map(|f| {
-                if f.is_absolute() {
-                    f.clone()
-                } else {
-                    self.base_dir.join(f)
-                }
-            })
-            .collect();
 
         let mut result = Vec::new();
-        for filter_path in &resolved_filters {
-            if let Some(found) = all_files.iter().find(|f| *f == filter_path) {
-                result.push(found.clone());
-            } else {
-                return Err(crate::errors::EntangledError::Config(format!(
-                    "File {} is not a source file (does not match source_patterns)",
-                    filter_path.display()
-                )));
+        for f in filter {
+            let target = self.resolve_path(f);
+            match all_files.iter().find(|s| self.resolve_path(s) == target) {
+                Some(found) => result.push(found.clone()),
+                None => {
+                    return Err(crate::errors::EntangledError::Config(format!(
+                        "File {} is not a source file (does not match source_patterns)",
+                        f.display()
+                    )));
+                }
             }
         }
 
@@ -194,6 +191,30 @@ mod tests {
         let absolute = dir.path().join("absolute/path");
         let resolved = ctx.resolve_path(&absolute);
         assert_eq!(resolved, absolute);
+    }
+
+    #[test]
+    fn test_source_files_filtered_matches_relative_and_absolute() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "# A").unwrap();
+        std::fs::write(dir.path().join("b.md"), "# B").unwrap();
+
+        let ctx = Context::default_for_dir(dir.path().to_path_buf()).unwrap();
+
+        // Relative filter must match a source file returned relative to base_dir.
+        let by_relative = ctx.source_files_filtered(&[PathBuf::from("a.md")]).unwrap();
+        assert_eq!(by_relative, vec![PathBuf::from("a.md")]);
+
+        // Absolute filter pointing at the same file must also match.
+        let by_absolute = ctx
+            .source_files_filtered(&[dir.path().join("b.md")])
+            .unwrap();
+        assert_eq!(by_absolute, vec![PathBuf::from("b.md")]);
+
+        // A non-source file is rejected.
+        assert!(ctx
+            .source_files_filtered(&[PathBuf::from("missing.md")])
+            .is_err());
     }
 
     #[test]

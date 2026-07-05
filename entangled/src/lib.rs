@@ -31,6 +31,7 @@ pub mod model;
 pub mod readers;
 pub mod style;
 pub mod text_location;
+pub mod weave;
 
 #[cfg(test)]
 pub(crate) mod test_utils;
@@ -41,3 +42,4 @@ pub use errors::{EntangledError, Result};
 pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
 pub use style::Style;
+pub use weave::{weave_document, weave_to_html, weave_to_markdown, HtmlOptions, WovenDocument};

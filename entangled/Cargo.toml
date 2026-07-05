@@ -17,6 +17,10 @@ serde_yaml = "0.9"
 toml = "0.8"
 glob = "0.3"
 notify = "7"
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+syntect = { version = "5", default-features = false, features = [
+    "default-fancy",
+], optional = true }
 sha2 = "0.10"
 chrono = { version = "0.4", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
@@ -27,7 +31,12 @@ hex = "0.4"
 clap = { version = "4", features = ["derive"], optional = true }
 
 [features]
+default = ["highlight"]
 clap = ["dep:clap"]
+# Server-side syntax highlighting for the weave HTML backend. Pulls in syntect
+# (pure-Rust fancy-regex backend). Disable with --no-default-features for a
+# smaller binary; code then falls back to semantic `language-xxx` classes.
+highlight = ["dep:syntect"]
 
 [dev-dependencies]
 pretty_assertions = "1"

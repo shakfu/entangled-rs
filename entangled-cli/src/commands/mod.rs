@@ -10,6 +10,7 @@ pub mod stitch;
 pub mod sync;
 pub mod tangle;
 pub mod watch;
+pub mod weave;
 
 pub use config::config;
 pub use init::init;
@@ -20,3 +21,4 @@ pub use stitch::{stitch, StitchOptions};
 pub use sync::{sync, SyncOptions};
 pub use tangle::{tangle, TangleOptions};
 pub use watch::{watch, WatchOptions};
+pub use weave::{weave, WeaveOptions};

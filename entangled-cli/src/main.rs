@@ -22,7 +22,8 @@ Literate programming engine that keeps code and documentation in sync.\n\n\
   tangle  - extract code from markdown files into source files\n\
   stitch  - update markdown from modified source files\n\
   sync    - bidirectional sync (stitch then tangle)\n\
-  watch   - auto-sync on file changes"
+  watch   - auto-sync on file changes\n\
+  weave   - render documents to HTML/PDF/other formats"
 )]
 struct Cli {
     /// Configuration file path
@@ -117,6 +118,33 @@ enum Commands {
         /// Debounce delay in milliseconds
         #[arg(short, long, default_value = "100")]
         debounce: u64,
+    },
+
+    /// Render literate documents to HTML, markdown, or (via pandoc) other formats
+    Weave {
+        /// Output target: html, markdown, quarto, or any pandoc format (pdf, latex, docx, ...)
+        #[arg(short = 't', long = "to", default_value = "html")]
+        to: String,
+
+        /// Output file path (single input only; '-' writes text targets to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+
+        /// Emit an HTML fragment instead of a standalone document
+        #[arg(long)]
+        fragment: bool,
+
+        /// Path to the pandoc executable (for non-native targets)
+        #[arg(long, default_value = "pandoc")]
+        pandoc: String,
+
+        /// Glob patterns to filter source files
+        #[arg(short = 'g', long = "glob")]
+        glob: Vec<String>,
+
+        /// Specific files to weave
+        #[arg(value_name = "FILE")]
+        files: Vec<PathBuf>,
     },
 
     /// Show status of files
@@ -288,6 +316,26 @@ fn main() -> ExitCode {
                 debounce_ms: debounce,
             };
             commands::watch(&mut ctx, options)
+        }
+
+        Commands::Weave {
+            to,
+            output,
+            fragment,
+            pandoc,
+            glob,
+            files,
+        } => {
+            let options = commands::WeaveOptions {
+                to,
+                output,
+                fragment,
+                pandoc,
+                glob,
+                files,
+                quiet: cli.quiet,
+            };
+            commands::weave(&ctx, options)
         }
 
         Commands::Status { verbose, json } => {
