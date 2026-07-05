@@ -5,6 +5,6 @@ mod document;
 
 pub use context::Context;
 pub use document::{
-    locate_source, stitch_documents, stitch_files, sync_documents, tangle_documents, tangle_files,
-    Document, SourceLocation,
+    combined_reference_map, locate_source, stitch_documents, stitch_files, sync_documents,
+    tangle_documents, tangle_files, Document, SourceLocation,
 };

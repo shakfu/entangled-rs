@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-05
+
 ### Added
 
 #### Weave: documentation output
@@ -59,6 +61,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `[eval.runners]` config table. `eval=true` uses the block's own language.
 - **Library API**: `eval_documents`, `EvalResult`, `EvalCache`, `EvalOptions`,
   and `EvalConfig` are exported from the `entangled` crate.
+
+#### Authoring safety, discoverability, and visualization
+
+- **`entangled check` command**: validates the project and reports dangling
+  references (`<<name>>` with no defining block), output-target collisions (two
+  block names writing the same `file=`), reference cycles, and orphan blocks
+  (never referenced or tangled). Exits non-zero on any error, so it works as a
+  pre-commit/CI gate. Supports `--json` and `--strict` (warnings as errors).
+  Runnable `eval=` blocks are correctly excluded from the orphan check.
+- **`entangled graph` command**: emits the block reference-dependency graph as
+  Graphviz DOT (`--format dot`, default) or Mermaid (`--format mermaid`), to
+  stdout or `-o <file>`. Tangle roots and dangling references are styled
+  distinctly.
+- **`entangled init --example`**: scaffolds a runnable starter document
+  (`hello.md`) plus a matching config, exercising the full tangle -> eval ->
+  weave -> check loop so a new user sees payoff on the first run.
+- **Shared analysis helper**: `combined_reference_map` builds one cross-file
+  reference map, now reused by tangle, eval, check, and graph.
+- **Library API**: `check_documents`, `Finding`, `Severity`, `graph_documents`,
+  and `GraphFormat` are exported from the `entangled` crate.
 
 #### Bare Annotation Mode
 - New `annotation = "bare"` mode: replaces sentinel comments with blank lines between block boundaries, giving clean output with visual separation
@@ -287,4 +309,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 This is the initial release of the Rust translation of the Entangled literate programming engine. The implementation provides full feature parity with the core functionality of the Python version while offering improved performance through Rust's zero-cost abstractions.
 
+[unreleased]: https://github.com/entangled/entangled-rs/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/entangled/entangled-rs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/entangled/entangled-rs/releases/tag/v0.1.0

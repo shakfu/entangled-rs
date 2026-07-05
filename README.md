@@ -32,6 +32,8 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 - **Watch**: Monitor files for changes and sync automatically
 - **Weave**: Render documents to self-contained HTML (with clickable code cross-references), clean markdown, or PDF/docx/LaTeX/EPUB via pandoc
 - **Eval**: Execute runnable code blocks and capture their output for reproducible reports (cached, shown in woven output)
+- **Check**: Validate references, output targets, and cycles -- a CI/pre-commit gate
+- **Graph**: Emit the block dependency graph as Graphviz DOT or Mermaid
 - **References**: Code blocks can reference other blocks with `<<refname>>`
 - **Annotations**: Generated files include markers for round-trip editing
 - **40+ Languages**: Built-in comment style configurations
@@ -87,6 +89,18 @@ See [Python Bindings API](#python-bindings-api) for library usage.
 
 ## Quick Start
 
+The fastest way to see the whole loop is to scaffold a runnable example:
+
+```bash
+entangled init --example   # writes entangled.toml and a starter hello.md
+entangled tangle           # extract hello.py
+entangled eval             # run the demo block (prints 55)
+entangled weave -o hello.html   # render with clickable cross-references
+entangled check            # validate references and targets
+```
+
+Or set it up by hand:
+
 1. Create a markdown file with code blocks:
 
     # Hello World
@@ -141,9 +155,11 @@ cat hello.py
 | `watch` | Watch for changes and sync automatically |
 | `weave` | Render documents to HTML, markdown, or (via pandoc) PDF/docx/etc. |
 | `eval` | Execute runnable code blocks and cache their output |
+| `check` | Validate references, targets, and cycles (CI-friendly) |
+| `graph` | Emit the block dependency graph (DOT or Mermaid) |
 | `status` | Show status of tracked files |
 | `reset` | Reset the file database |
-| `init` | Initialize a new entangled project |
+| `init` | Initialize a new entangled project (`--example` scaffolds a starter doc) |
 | `locate` | Map a tangled file line back to its markdown source |
 
 ### Global Options
@@ -240,6 +256,45 @@ entangled eval [OPTIONS]
 |--------|-------------|
 | `-f, --force` | Re-run every block even if a fresh cached result exists |
 | `-n, --dry-run` | Report which blocks would run without executing them |
+
+### Check Options
+
+```bash
+entangled check [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--json` | Emit findings as JSON |
+| `--strict` | Treat warnings as errors |
+
+`check` reports **dangling references** (a `<<name>>` with no defining block),
+**target collisions** (two block names writing the same `file=`), **reference
+cycles**, and **orphan blocks** (never referenced or tangled). It exits non-zero
+when any error is found, so it works as a pre-commit or CI gate:
+
+```bash
+entangled check || exit 1
+```
+
+### Graph Options
+
+```bash
+entangled graph [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --format <FORMAT>` | `dot` (default) or `mermaid` |
+| `-o, --output <PATH>` | Output file (stdout if omitted) |
+
+Emits the block reference-dependency graph. Tangle roots (blocks with a `file=`
+target) and dangling references are styled distinctly:
+
+```bash
+entangled graph -o graph.dot && dot -Tsvg graph.dot -o graph.svg
+entangled graph --format mermaid   # paste into a Markdown mermaid block
+```
 
 ## Weaving (documentation output)
 

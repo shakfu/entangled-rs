@@ -24,7 +24,9 @@ Literate programming engine that keeps code and documentation in sync.\n\n\
   sync    - bidirectional sync (stitch then tangle)\n\
   watch   - auto-sync on file changes\n\
   eval    - run code blocks and capture reproducible output\n\
-  weave   - render documents to HTML/PDF/other formats"
+  weave   - render documents to HTML/PDF/other formats\n\
+  check   - validate references, targets, and cycles\n\
+  graph   - emit the block dependency graph (DOT/Mermaid)"
 )]
 struct Cli {
     /// Configuration file path
@@ -185,13 +187,39 @@ enum Commands {
     Config,
 
     /// Initialize a new entangled project
-    Init,
+    Init {
+        /// Also scaffold a runnable starter document (hello.md)
+        #[arg(long)]
+        example: bool,
+    },
 
     /// Map a tangled file line back to its markdown source
     Locate {
         /// Location in format file:line (e.g., output.py:42)
         #[arg(value_name = "FILE:LINE")]
         location: String,
+    },
+
+    /// Validate references, targets, and cycles (non-zero exit on errors)
+    Check {
+        /// Emit findings as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Treat warnings as errors
+        #[arg(long)]
+        strict: bool,
+    },
+
+    /// Emit the block reference-dependency graph (Graphviz DOT or Mermaid)
+    Graph {
+        /// Output format: dot or mermaid
+        #[arg(short = 'f', long, default_value = "dot")]
+        format: String,
+
+        /// Output file (stdout if omitted)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
 }
 
@@ -223,8 +251,8 @@ fn main() -> ExitCode {
         .unwrap_or_else(|| PathBuf::from("."));
 
     // Handle init before context creation (no config needed)
-    if matches!(cli.command, Commands::Init) {
-        return match commands::init(&base_dir) {
+    if let Commands::Init { example } = cli.command {
+        return match commands::init(&base_dir, example) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("Error: {}", e);
@@ -398,7 +426,25 @@ fn main() -> ExitCode {
             commands::locate(&ctx, options)
         }
 
-        Commands::Init => unreachable!("handled before context creation"),
+        Commands::Check { json, strict } => {
+            let options = commands::CheckOptions {
+                json,
+                strict,
+                quiet: cli.quiet,
+            };
+            commands::check(&ctx, options)
+        }
+
+        Commands::Graph { format, output } => {
+            let options = commands::GraphOptions {
+                format,
+                output,
+                quiet: cli.quiet,
+            };
+            commands::graph(&ctx, options)
+        }
+
+        Commands::Init { .. } => unreachable!("handled before context creation"),
     };
 
     match result {

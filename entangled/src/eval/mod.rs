@@ -30,9 +30,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::errors::Result;
-use crate::interface::Context;
+use crate::interface::{combined_reference_map, Context};
 use crate::model::{tangle_ref, ReferenceMap, ReferenceName};
-use crate::readers::parse_markdown;
 
 /// Built-in runner name -> command argv. Config entries override these.
 const BUILTIN_RUNNERS: &[(&str, &[&str])] = &[
@@ -252,15 +251,7 @@ fn error_result(rb: &RunnableBlock, hash: &str, message: String) -> EvalResult {
 /// Parses every source file into one combined reference map so that runnable
 /// blocks can resolve `<<references>>` defined in other files.
 fn build_global_refs(ctx: &Context) -> Result<ReferenceMap> {
-    let mut refs = ReferenceMap::new();
-    for path in ctx.source_files()? {
-        let content = ctx.file_cache.read(&path)?;
-        let doc = parse_markdown(&content, Some(&path), &ctx.config)?;
-        for block in doc.refs.blocks() {
-            refs.insert(block.clone());
-        }
-    }
-    Ok(refs)
+    combined_reference_map(ctx, &ctx.source_files()?)
 }
 
 /// Finds runnable blocks (those with an `eval` attribute), de-duplicated by name
@@ -346,6 +337,7 @@ pub fn eval_cache_path(ctx: &Context) -> PathBuf {
 mod tests {
     use super::*;
     use crate::config::{Config, NamespaceDefault};
+    use crate::readers::parse_markdown;
 
     fn refs_from(input: &str) -> ReferenceMap {
         let mut c = Config::default();

@@ -50,19 +50,28 @@ pub fn tangle_documents(ctx: &Context) -> Result<Transaction> {
     tangle_files(ctx, &source_files)
 }
 
-/// Tangles specific source files and produces output files.
-pub fn tangle_files(ctx: &Context, source_files: &[PathBuf]) -> Result<Transaction> {
-    let mut transaction = Transaction::new();
-
-    // Collect all references from all source files
+/// Builds a single reference map combining the code blocks of every given
+/// source file, preserving each block's original id.
+///
+/// This is the shared basis for whole-project analysis (tangle, eval, check,
+/// graph): references can resolve across files, and every block is visible.
+pub fn combined_reference_map(ctx: &Context, source_files: &[PathBuf]) -> Result<ReferenceMap> {
     let mut all_refs = ReferenceMap::new();
-
     for path in source_files {
         let doc = Document::load(path, ctx)?;
         for (id, block) in doc.refs().iter_arcs() {
             all_refs.insert_arc_with_id(id.clone(), Arc::clone(block));
         }
     }
+    Ok(all_refs)
+}
+
+/// Tangles specific source files and produces output files.
+pub fn tangle_files(ctx: &Context, source_files: &[PathBuf]) -> Result<Transaction> {
+    let mut transaction = Transaction::new();
+
+    // Collect all references from all source files
+    let all_refs = combined_reference_map(ctx, source_files)?;
 
     // Tangle each target file
     let mut tangled: HashMap<PathBuf, String> = HashMap::new();
