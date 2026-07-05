@@ -90,6 +90,7 @@ impl ConfigUpdate {
             ),
             watch: self.watch.unwrap_or_else(|| base.watch.clone()),
             hooks: merge_hooks(&base.hooks, self.hooks.as_ref()),
+            eval: base.eval.clone(),
             filedb_path: self.filedb_path.unwrap_or_else(|| base.filedb_path.clone()),
             style: self.style.unwrap_or(base.style),
             strip_quarto_options: self

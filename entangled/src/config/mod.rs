@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 
 pub use crate::style::Style;
 pub use annotation_method::AnnotationMethod;
-pub use config_data::{Config, HooksConfig, WatchConfig};
+pub use config_data::{Config, EvalConfig, HooksConfig, WatchConfig};
 pub use config_update::ConfigUpdate;
 pub use language::{Comment, Language};
 pub use markers::{annotation_begin, annotation_end, Markers, ANNOTATION_PREFIX, REF_PATTERN};

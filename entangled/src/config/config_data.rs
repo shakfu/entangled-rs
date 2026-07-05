@@ -50,6 +50,10 @@ pub struct Config {
     #[serde(default)]
     pub hooks: HooksConfig,
 
+    /// Evaluation configuration for runnable code blocks.
+    #[serde(default)]
+    pub eval: EvalConfig,
+
     /// File database path.
     #[serde(default = "default_filedb_path")]
     pub filedb_path: PathBuf,
@@ -99,6 +103,7 @@ impl Default for Config {
             languages: Vec::new(),
             watch: WatchConfig::default(),
             hooks: HooksConfig::default(),
+            eval: EvalConfig::default(),
             filedb_path: default_filedb_path(),
             style: Style::default(),
             strip_quarto_options: default_strip_quarto_options(),
@@ -163,6 +168,19 @@ impl Default for WatchConfig {
 
 fn default_debounce() -> u64 {
     100
+}
+
+/// Evaluation (runnable code block) configuration.
+///
+/// Maps a runner name to the command used to execute it; the block's
+/// reference-expanded source is piped to the command on standard input. These
+/// entries override and extend the built-in runners (e.g. `python`, `sh`,
+/// `node`), so a config only needs to list runners it wants to add or change.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct EvalConfig {
+    /// Runner name -> command argv (program plus arguments).
+    #[serde(default)]
+    pub runners: HashMap<String, Vec<String>>,
 }
 
 /// Hook configuration.

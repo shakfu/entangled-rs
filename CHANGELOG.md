@@ -39,6 +39,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Library API**: `weave_document`, `weave_to_html`, `weave_to_markdown`,
   `WovenDocument`, and `HtmlOptions` are exported from the `entangled` crate.
 
+#### Executable code blocks / reproducible output
+
+- **`entangled eval` command** executes runnable code blocks -- those marked with
+  an `eval=<runner>` attribute -- by expanding their references and piping the
+  source to a configured interpreter on stdin, capturing stdout/stderr/exit code.
+- **Reproducible caching**: results are stored in `.entangled/eval-cache.json`
+  keyed by block name and a hash of the expanded source, so a block re-runs only
+  when its code or runner changes. `--force` re-runs all; `--dry-run` reports
+  runnable blocks without executing.
+- **Safety**: execution is opt-in and happens only on `eval` -- never during
+  tangle, stitch, or weave. Per-block failures (non-zero exit, unknown runner,
+  expansion error) are captured rather than aborting the run.
+- **Weave integration**: `weave` renders a captured-output panel beneath each
+  runnable block (success or error), turning a document into a reproducible
+  report. New `weave_document_with_outputs` and `BlockOutput` API.
+- **Configurable runners**: built-ins for `python`, `sh`/`bash`, `node`, `ruby`,
+  `perl`, `lua`, `php`, `r`, and `deno`; overridable/extendable via an
+  `[eval.runners]` config table. `eval=true` uses the block's own language.
+- **Library API**: `eval_documents`, `EvalResult`, `EvalCache`, `EvalOptions`,
+  and `EvalConfig` are exported from the `entangled` crate.
+
 #### Bare Annotation Mode
 - New `annotation = "bare"` mode: replaces sentinel comments with blank lines between block boundaries, giving clean output with visual separation
 - `tangle_bare()` function in tangle engine with blank-line collapse post-processing

@@ -49,6 +49,17 @@ pub enum CodeLine {
     },
 }
 
+/// Captured output of a runnable block, for reproducible-report rendering.
+#[derive(Debug, Clone)]
+pub struct BlockOutput {
+    /// Captured standard output.
+    pub stdout: String,
+    /// Captured standard error.
+    pub stderr: String,
+    /// Whether the block ran and exited successfully.
+    pub success: bool,
+}
+
 /// A code block prepared for weaving.
 #[derive(Debug, Clone)]
 pub struct WeaveCodeBlock {
@@ -66,6 +77,9 @@ pub struct WeaveCodeBlock {
     pub total: usize,
     /// Names of blocks that reference this block (sorted, de-duplicated).
     pub used_by: Vec<String>,
+    /// Captured execution output, when the block was evaluated and this is its
+    /// first occurrence (output is shown once per block name).
+    pub output: Option<BlockOutput>,
 }
 
 impl WeaveCodeBlock {
@@ -116,6 +130,18 @@ pub fn weave_document(
     input: &str,
     source_path: Option<&Path>,
     config: &Config,
+) -> Result<WovenDocument> {
+    weave_document_with_outputs(input, source_path, config, &HashMap::new())
+}
+
+/// Like [`weave_document`], but attaches captured execution output (keyed by
+/// block name) to each runnable block's first occurrence, so weave backends can
+/// render a reproducible-output panel beneath it.
+pub fn weave_document_with_outputs(
+    input: &str,
+    source_path: Option<&Path>,
+    config: &Config,
+    outputs: &HashMap<String, BlockOutput>,
 ) -> Result<WovenDocument> {
     let doc_style = Style::for_document(source_path, config.style);
 
@@ -207,6 +233,12 @@ pub fn weave_document(
                     .map(|set| set.iter().cloned().collect::<Vec<_>>())
                     .unwrap_or_default();
                 used.sort();
+                // Attach captured output once, on the block's first occurrence.
+                let output = if index == 0 {
+                    name.as_ref().and_then(|n| outputs.get(n)).cloned()
+                } else {
+                    None
+                };
                 elements.push(WeaveElement::Code(WeaveCodeBlock {
                     name,
                     target,
@@ -215,6 +247,7 @@ pub fn weave_document(
                     index,
                     total,
                     used_by: used,
+                    output,
                 }));
             }
         }

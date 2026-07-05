@@ -23,6 +23,7 @@ Literate programming engine that keeps code and documentation in sync.\n\n\
   stitch  - update markdown from modified source files\n\
   sync    - bidirectional sync (stitch then tangle)\n\
   watch   - auto-sync on file changes\n\
+  eval    - run code blocks and capture reproducible output\n\
   weave   - render documents to HTML/PDF/other formats"
 )]
 struct Cli {
@@ -118,6 +119,17 @@ enum Commands {
         /// Debounce delay in milliseconds
         #[arg(short, long, default_value = "100")]
         debounce: u64,
+    },
+
+    /// Execute runnable code blocks (marked `eval=<runner>`) and cache their output
+    Eval {
+        /// Re-run every block even if a fresh cached result exists
+        #[arg(short, long)]
+        force: bool,
+
+        /// Report which blocks would run without executing them
+        #[arg(short = 'n', long)]
+        dry_run: bool,
     },
 
     /// Render literate documents to HTML, markdown, or (via pandoc) other formats
@@ -316,6 +328,15 @@ fn main() -> ExitCode {
                 debounce_ms: debounce,
             };
             commands::watch(&mut ctx, options)
+        }
+
+        Commands::Eval { force, dry_run } => {
+            let options = commands::EvalCommandOptions {
+                force,
+                dry_run,
+                quiet: cli.quiet,
+            };
+            commands::eval(&ctx, options)
         }
 
         Commands::Weave {

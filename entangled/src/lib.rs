@@ -24,6 +24,7 @@
 
 pub mod config;
 pub mod errors;
+pub mod eval;
 pub mod hooks;
 pub mod interface;
 pub mod io;
@@ -39,7 +40,11 @@ pub(crate) mod test_utils;
 // Re-export commonly used types
 pub use config::Config;
 pub use errors::{EntangledError, Result};
+pub use eval::{eval_documents, EvalCache, EvalOptions, EvalResult};
 pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
 pub use style::Style;
-pub use weave::{weave_document, weave_to_html, weave_to_markdown, HtmlOptions, WovenDocument};
+pub use weave::{
+    weave_document, weave_document_with_outputs, weave_to_html, weave_to_markdown, BlockOutput,
+    HtmlOptions, WovenDocument,
+};

@@ -141,6 +141,7 @@ fn render_block(out: &mut String, block: &WeaveCodeBlock, first_anchor: &HashMap
     out.push_str(&render_code_lines(block, first_anchor));
     out.push_str("</code></pre>\n");
 
+    render_output(out, block);
     render_used_by(out, block, first_anchor);
     out.push_str("</figure>\n");
 }
@@ -210,6 +211,35 @@ fn render_code_lines(block: &WeaveCodeBlock, first_anchor: &HashMap<&str, String
         }
     }
     out
+}
+
+/// Writes the captured execution output panel, if any.
+fn render_output(out: &mut String, block: &WeaveCodeBlock) {
+    let Some(output) = &block.output else {
+        return;
+    };
+    let class = if output.success {
+        "entangled-output"
+    } else {
+        "entangled-output entangled-output-error"
+    };
+    let _ = write!(out, "<div class=\"{class}\">");
+    out.push_str("<div class=\"entangled-output-label\">output</div>");
+    if !output.stdout.is_empty() {
+        let _ = write!(
+            out,
+            "<pre class=\"entangled-stdout\">{}</pre>",
+            escape_html(output.stdout.trim_end_matches('\n'))
+        );
+    }
+    if !output.stderr.is_empty() {
+        let _ = write!(
+            out,
+            "<pre class=\"entangled-stderr\">{}</pre>",
+            escape_html(output.stderr.trim_end_matches('\n'))
+        );
+    }
+    out.push_str("</div>\n");
 }
 
 /// Writes the "used in" cross-reference footer, if any.
@@ -328,6 +358,17 @@ a.entangled-ref:hover { border-bottom-style: solid; }
 }
 .entangled-usedby a { color: var(--muted); }
 pre.entangled-plain { margin: 1.25rem 0; border: 1px solid var(--border); }
+.entangled-output { border-top: 1px solid var(--border); }
+.entangled-output-label {
+  padding: 0.3rem 1rem; font-size: 0.7rem; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--muted); background: var(--bg);
+}
+.entangled-output > pre { border-radius: 0; margin: 0; background: var(--bg); }
+.entangled-output pre.entangled-stderr { color: #b91c1c; }
+@media (prefers-color-scheme: dark) {
+  .entangled-output pre.entangled-stderr { color: #f87171; }
+}
+.entangled-output-error .entangled-output-label { color: #b91c1c; }
 "#;
 
 #[cfg(test)]
@@ -431,6 +472,56 @@ pass
         assert!(html.contains("&amp;"));
         assert!(html.contains("&gt;"));
         assert!(!html.contains("a < b & c > d"));
+    }
+
+    #[test]
+    fn renders_captured_output_panel() {
+        use crate::weave::{weave_document_with_outputs, BlockOutput};
+        use std::collections::HashMap;
+
+        let input = "```python #demo eval=python\nprint(6 * 7)\n```\n";
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "demo".to_string(),
+            BlockOutput {
+                stdout: "42\n".to_string(),
+                stderr: String::new(),
+                success: true,
+            },
+        );
+        let mut c = Config::default();
+        c.namespace_default = NamespaceDefault::None;
+        let html = weave_document_with_outputs(input, None, &c, &outputs)
+            .unwrap()
+            .to_html(&HtmlOptions::default());
+        assert!(html.contains("class=\"entangled-output\""));
+        assert!(html.contains("entangled-output-label"));
+        assert!(html.contains(">42</pre>"));
+    }
+
+    #[test]
+    fn failed_output_is_marked_and_shows_stderr() {
+        use crate::weave::{weave_document_with_outputs, BlockOutput};
+        use std::collections::HashMap;
+
+        let input = "```sh #boom eval=sh\nexit 1\n```\n";
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "boom".to_string(),
+            BlockOutput {
+                stdout: String::new(),
+                stderr: "boom!".to_string(),
+                success: false,
+            },
+        );
+        let mut c = Config::default();
+        c.namespace_default = NamespaceDefault::None;
+        let html = weave_document_with_outputs(input, None, &c, &outputs)
+            .unwrap()
+            .to_html(&HtmlOptions::default());
+        assert!(html.contains("entangled-output-error"));
+        assert!(html.contains("entangled-stderr"));
+        assert!(html.contains("boom!"));
     }
 
     #[cfg(feature = "highlight")]

@@ -31,6 +31,7 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 - **Sync**: Bidirectional synchronization between markdown and code
 - **Watch**: Monitor files for changes and sync automatically
 - **Weave**: Render documents to self-contained HTML (with clickable code cross-references), clean markdown, or PDF/docx/LaTeX/EPUB via pandoc
+- **Eval**: Execute runnable code blocks and capture their output for reproducible reports (cached, shown in woven output)
 - **References**: Code blocks can reference other blocks with `<<refname>>`
 - **Annotations**: Generated files include markers for round-trip editing
 - **40+ Languages**: Built-in comment style configurations
@@ -139,6 +140,7 @@ cat hello.py
 | `sync` | Synchronize markdown and code files |
 | `watch` | Watch for changes and sync automatically |
 | `weave` | Render documents to HTML, markdown, or (via pandoc) PDF/docx/etc. |
+| `eval` | Execute runnable code blocks and cache their output |
 | `status` | Show status of tracked files |
 | `reset` | Reset the file database |
 | `init` | Initialize a new entangled project |
@@ -228,6 +230,17 @@ entangled weave [OPTIONS] [-g PATTERN]... [FILES...]
 | `--pandoc <PATH>` | Path to the pandoc executable (default: `pandoc`) |
 | `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
+### Eval Options
+
+```bash
+entangled eval [OPTIONS]
+```
+
+| Option | Description |
+|--------|-------------|
+| `-f, --force` | Re-run every block even if a fresh cached result exists |
+| `-n, --dry-run` | Report which blocks would run without executing them |
+
 ## Weaving (documentation output)
 
 Where `tangle` produces the machine-readable half of a literate program, `weave`
@@ -276,6 +289,47 @@ binary; code then falls back to plain `language-xxx`-classed blocks.
 Only the native targets (`html`, `markdown`, `quarto`) work without pandoc.
 Pandoc-backed formats additionally require pandoc on the `PATH` (or `--pandoc`),
 and `pdf` requires a LaTeX engine as usual.
+
+## Reproducible output (executable blocks)
+
+A code block marked with an `eval` attribute is *runnable*. `entangled eval`
+expands its references, pipes the resulting source to a configured runner
+(interpreter) on standard input, and captures the output. `weave` then renders
+that output beneath the block, giving reproducible reports and tutorials where
+the shown results are guaranteed to match the code.
+
+````markdown
+```python #answer eval=python
+print(6 * 7)
+```
+````
+
+```bash
+entangled eval            # runs the block, prints and caches "42"
+entangled weave -o out.html   # renders the block with a "42" output panel
+```
+
+Key points:
+
+- **Explicit and opt-in.** Because it runs arbitrary code, execution happens
+  *only* on `entangled eval` -- never during tangle, stitch, or weave.
+- **Cached and reproducible.** Results are stored in `.entangled/eval-cache.json`
+  keyed by block name and a hash of the expanded source. A block is re-run only
+  when its code (or runner) changes; use `--force` to re-run everything.
+- **The `eval` value names the runner.** `eval=python`, `eval=sh`, `eval=node`,
+  etc. The special value `eval=true` uses the block's own language as the runner.
+- **Failures are captured, not fatal.** A non-zero exit or missing interpreter is
+  recorded (and shown as an error panel in weave) without aborting the run.
+
+Built-in runners include `python`, `sh`/`bash`, `node`, `ruby`, `perl`, `lua`,
+`php`, `r`, and `deno`. Add or override them in `entangled.toml`:
+
+```toml
+[eval.runners]
+# runner name -> command argv; the block source is piped on stdin
+python = ["python3"]
+sage = ["sage", "-python"]
+```
 
 ## Code Block Syntax
 

@@ -1,6 +1,7 @@
 //! CLI command implementations.
 
 pub mod config;
+pub mod eval;
 mod helpers;
 pub mod init;
 pub mod locate;
@@ -13,6 +14,7 @@ pub mod watch;
 pub mod weave;
 
 pub use config::config;
+pub use eval::{eval, EvalCommandOptions};
 pub use init::init;
 pub use locate::{locate, LocateOptions};
 pub use reset::{reset, ResetOptions};

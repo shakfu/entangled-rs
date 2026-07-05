@@ -66,6 +66,31 @@ fn render_block(out: &mut String, block: &WeaveCodeBlock) {
     }
     out.push_str(&fence);
     out.push('\n');
+
+    render_output(out, block);
+}
+
+/// Emits a captured-output block after the code, if any.
+fn render_output(out: &mut String, block: &WeaveCodeBlock) {
+    let Some(output) = &block.output else {
+        return;
+    };
+    let label = if output.success {
+        "**output:**"
+    } else {
+        "**output (failed):**"
+    };
+    let _ = write!(out, "\n{label}\n\n");
+    out.push_str("```\n");
+    if !output.stdout.is_empty() {
+        out.push_str(output.stdout.trim_end_matches('\n'));
+        out.push('\n');
+    }
+    if !output.stderr.is_empty() {
+        out.push_str(output.stderr.trim_end_matches('\n'));
+        out.push('\n');
+    }
+    out.push_str("```\n");
 }
 
 /// Builds a bold caption line for an Entangled block, or `None` for plain code.
@@ -168,6 +193,30 @@ mod tests {
         let out = md("```python #s\na=1\n```\n\n```python #s\nb=2\n```\n");
         assert!(out.contains("**\u{00ab}s\u{00bb} 1/2**"));
         assert!(out.contains("**\u{00ab}s\u{00bb} 2/2**"));
+    }
+
+    #[test]
+    fn renders_captured_output_block() {
+        use crate::weave::{weave_document_with_outputs, BlockOutput};
+        use std::collections::HashMap;
+
+        let input = "```python #demo eval=python\nprint(6 * 7)\n```\n";
+        let mut outputs = HashMap::new();
+        outputs.insert(
+            "demo".to_string(),
+            BlockOutput {
+                stdout: "42\n".to_string(),
+                stderr: String::new(),
+                success: true,
+            },
+        );
+        let mut c = Config::default();
+        c.namespace_default = NamespaceDefault::None;
+        let out = weave_document_with_outputs(input, None, &c, &outputs)
+            .unwrap()
+            .to_markdown();
+        assert!(out.contains("**output:**"));
+        assert!(out.contains("42"));
     }
 
     #[test]

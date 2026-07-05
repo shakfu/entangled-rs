@@ -9,9 +9,12 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use std::collections::HashMap;
+
 use entangled::errors::{EntangledError, Result};
+use entangled::eval::{eval_cache_path, EvalCache};
 use entangled::interface::Context;
-use entangled::{weave_document, HtmlOptions};
+use entangled::{weave_document_with_outputs, BlockOutput, HtmlOptions};
 
 /// Selected weave backend / output family.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -78,11 +81,35 @@ pub fn weave(ctx: &Context, options: WeaveOptions) -> Result<()> {
         )));
     }
 
+    let outputs = load_eval_outputs(ctx);
+
     for input in &inputs {
-        weave_one(ctx, input, &backend, &options, to_stdout)?;
+        weave_one(ctx, input, &backend, &options, to_stdout, &outputs)?;
     }
 
     Ok(())
+}
+
+/// Loads captured evaluation output (from `entangled eval`) as a map keyed by
+/// block name, for reproducible-output rendering. Absent or unreadable caches
+/// yield an empty map -- weaving works with or without prior evaluation.
+fn load_eval_outputs(ctx: &Context) -> HashMap<String, BlockOutput> {
+    let cache = EvalCache::load(&eval_cache_path(ctx)).unwrap_or_default();
+    cache
+        .results
+        .into_iter()
+        .map(|(name, r)| {
+            let success = r.success();
+            (
+                name,
+                BlockOutput {
+                    stdout: r.stdout,
+                    stderr: r.stderr,
+                    success,
+                },
+            )
+        })
+        .collect()
 }
 
 /// Resolves a `--to` string into a backend.
@@ -131,10 +158,11 @@ fn weave_one(
     backend: &Backend,
     options: &WeaveOptions,
     to_stdout: bool,
+    outputs: &HashMap<String, BlockOutput>,
 ) -> Result<()> {
     let resolved_input = ctx.resolve_path(input);
     let content = std::fs::read_to_string(&resolved_input)?;
-    let doc = weave_document(&content, Some(input), &ctx.config)?;
+    let doc = weave_document_with_outputs(&content, Some(input), &ctx.config, outputs)?;
 
     let out_path =
         |ext: &str| output_path(&resolved_input, options, ext).map(|p| ctx.resolve_path(&p));
