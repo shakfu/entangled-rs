@@ -67,6 +67,7 @@ impl PyConfig {
         match self.inner.annotation {
             AnnotationMethod::Standard => "standard".to_string(),
             AnnotationMethod::Naked => "naked".to_string(),
+            AnnotationMethod::Bare => "bare".to_string(),
             AnnotationMethod::Supplemental => "supplemental".to_string(),
         }
     }
@@ -77,6 +78,7 @@ impl PyConfig {
         self.inner.annotation = match value {
             "standard" => AnnotationMethod::Standard,
             "naked" => AnnotationMethod::Naked,
+            "bare" => AnnotationMethod::Bare,
             "supplemental" => AnnotationMethod::Supplemental,
             _ => return Err(PyValueError::new_err("Invalid annotation method")),
         };

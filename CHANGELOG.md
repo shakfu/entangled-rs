@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Library API**: `weave_document`, `weave_to_html`, `weave_to_markdown`,
   `WovenDocument`, and `HtmlOptions` are exported from the `entangled` crate.
 
+#### Bare Annotation Mode
+- New `annotation = "bare"` mode: replaces sentinel comments with blank lines between block boundaries, giving clean output with visual separation
+- `tangle_bare()` function in tangle engine with blank-line collapse post-processing
+- One-way only (no stitch), like `naked` mode
+- Python bindings support `"bare"` in Config getter/setter
+
 #### Multi-Style Code Block Syntax Support
 - **Style enum**: Support for four code block syntax styles:
   - `entangled-rs` (default): Native style with `python #name file=path`
@@ -188,7 +194,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Annotation System
 - Standard annotation format: `# ~/~ begin <<ref[n]>>` / `# ~/~ end`
 - Support for different comment styles per language
-- Three annotation methods: standard, naked, supplemental
+- Four annotation methods: standard, naked, bare, supplemental
 - Comment style detection based on language
 
 #### Configuration

@@ -13,6 +13,9 @@ pub enum AnnotationMethod {
     /// No annotations, just raw code.
     Naked,
 
+    /// No annotations, but blank lines between block boundaries.
+    Bare,
+
     /// Annotations for supplemental/weaved output.
     Supplemental,
 }
@@ -24,6 +27,11 @@ impl AnnotationMethod {
             self,
             AnnotationMethod::Standard | AnnotationMethod::Supplemental
         )
+    }
+
+    /// Returns true if this method produces no annotations and no stitch support.
+    pub fn is_one_way(&self) -> bool {
+        matches!(self, AnnotationMethod::Naked | AnnotationMethod::Bare)
     }
 }
 
@@ -41,6 +49,7 @@ mod tests {
         assert!(AnnotationMethod::Standard.has_annotations());
         assert!(AnnotationMethod::Supplemental.has_annotations());
         assert!(!AnnotationMethod::Naked.has_annotations());
+        assert!(!AnnotationMethod::Bare.has_annotations());
     }
 
     #[test]
@@ -50,5 +59,8 @@ mod tests {
 
         let naked: AnnotationMethod = serde_json::from_str("\"naked\"").unwrap();
         assert_eq!(naked, AnnotationMethod::Naked);
+
+        let bare: AnnotationMethod = serde_json::from_str("\"bare\"").unwrap();
+        assert_eq!(bare, AnnotationMethod::Bare);
     }
 }

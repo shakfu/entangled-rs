@@ -87,6 +87,7 @@ pub fn tangle_files(ctx: &Context, source_files: &[PathBuf]) -> Result<Transacti
                     .unwrap_or_else(|| Comment::line("#"));
                 (Some(comment), Some(Markers::default()))
             }
+            AnnotationMethod::Bare => (None, Some(Markers::default())),
             AnnotationMethod::Naked => (None, None),
         };
 
@@ -182,8 +183,8 @@ pub fn stitch_files(ctx: &Context, source_files: &[PathBuf]) -> Result<Transacti
             continue;
         }
 
-        // Only stitch from annotated files (naked mode has no annotations)
-        if ctx.config.annotation == AnnotationMethod::Naked {
+        // Only stitch from annotated files (naked/bare modes have no annotations)
+        if ctx.config.annotation.is_one_way() {
             continue;
         }
 
