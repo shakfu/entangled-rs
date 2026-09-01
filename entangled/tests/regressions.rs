@@ -526,12 +526,17 @@ fn changing_a_runner_argument_invalidates_the_cache() {
 fn an_evaluated_block_runs_in_the_project_directory() {
     use entangled::eval::{eval_documents, EvalOptions};
 
-    let dir = project(&[("doc.md", "```sh #where eval=sh\npwd\n```\n")]);
+    // Read a project file by relative path rather than comparing `pwd` output:
+    // under Git bash on Windows `pwd` prints an MSYS path (/c/Users/...) that
+    // no Windows API resolves.
+    let dir = project(&[
+        ("marker.txt", "in-project"),
+        ("doc.md", "```sh #where eval=sh\ncat marker.txt\n```\n"),
+    ]);
     let ctx = context(dir.path(), global_ns());
 
     let results = eval_documents(&ctx, &EvalOptions::default()).unwrap();
-    let reported = fs::canonicalize(results[0].stdout.trim()).unwrap();
-    assert_eq!(reported, fs::canonicalize(dir.path()).unwrap());
+    assert_eq!(results[0].stdout.trim(), "in-project", "{:?}", results[0]);
 }
 
 #[test]

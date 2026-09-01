@@ -40,9 +40,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       # Pinned so an advisory-database change cannot turn a green build red
-      # without a visible commit here. Policy (including which unmaintained
-      # transitive crates are accepted, and why) lives in .cargo/audit.toml.
-      - run: cargo install cargo-audit --version ^0.21 --locked
+      # without a visible commit here. 0.22 is the first release whose rustsec
+      # parses the CVSS 4.0 vectors now present in the database; 0.21 refuses
+      # to load it at all.
+      - run: cargo install cargo-audit --version ^0.22 --locked
       - run: cargo audit
 
   test:
@@ -78,13 +79,20 @@ jobs:
       # it is absent -- so build it, or that half of the suite silently no-ops.
       - name: Build the native CLI
         run: cargo build --release -p entangled-cli
+      # The venv holding maturin and pytest lives in pyentangled/, so every
+      # step runs there. --no-project stops `uv run` re-syncing from
+      # pyproject.toml, which rebuilds .venv and drops both tools; --python
+      # repeats the matrix version, without which pyentangled/.python-version
+      # (3.13) makes uv reject the venv and fall back to an interpreter that
+      # has neither.
       - name: Set up the environment
+        working-directory: pyentangled
         run: |
           uv venv --python ${{ matrix.python }}
           uv pip install maturin pytest
       - name: Build and install pyentangled
         working-directory: pyentangled
-        run: uv run maturin develop
+        run: uv run --no-project --python ${{ matrix.python }} maturin develop
       - name: Run pyentangled tests
         working-directory: pyentangled
-        run: uv run pytest tests/ -v
+        run: uv run --no-project --python ${{ matrix.python }} pytest tests/ -v

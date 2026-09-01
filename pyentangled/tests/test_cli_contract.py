@@ -59,15 +59,16 @@ EXPECTED_COMMANDS = {
 
 def native_cli() -> str | None:
     """Path to the native `entangled` binary, if this checkout has built one."""
-    found = shutil.which("entangled")
-    if found:
-        return found
+    # This checkout's build first: an `entangled` left on PATH by some earlier
+    # install is a different version, and the contract asserted would be its.
+    # which() rather than exists(): on Windows the binary is entangled.exe, and
+    # a miss here skips the whole native half of the suite in silence.
     repo_root = Path(__file__).resolve().parents[2]
     for profile in ("release", "debug"):
-        candidate = repo_root / "target" / profile / "entangled"
-        if candidate.exists():
-            return str(candidate)
-    return None
+        found = shutil.which("entangled", path=str(repo_root / "target" / profile))
+        if found:
+            return found
+    return shutil.which("entangled")
 
 
 needs_native = pytest.mark.skipif(
