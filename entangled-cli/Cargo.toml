@@ -4,11 +4,11 @@ version = "0.2.1"
 edition = "2021"
 description = "CLI for Entangled literate programming engine"
 license = "MIT"
-authors = ["Entangled Contributors"]
-repository = "https://github.com/entangled/entangled-rs"
+authors = ["Shakeeb Alireza <shakeeb.alireza@rezayat.net>"]
+repository = "https://github.com/shakfu/entangled-rs"
 
 [dependencies]
-entangled = { path = "../entangled", version = "0.2.0", features = ["clap"] }
+entangled-rs = { path = "../entangled", version = "0.2.1", features = ["clap"] }
 clap = { version = "4", features = ["derive"] }
 glob = "0.3"
 notify = "8"

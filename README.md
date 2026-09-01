@@ -50,7 +50,7 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 
 ### Pre-built Binaries
 
-Download the latest release for your platform from [GitHub Releases](https://github.com/entangled/entangled-rs/releases):
+Download the latest release for your platform from [GitHub Releases](https://github.com/shakfu/entangled-rs/releases):
 
 | Platform | Archive |
 |----------|---------|
@@ -66,10 +66,31 @@ Download the latest release for your platform from [GitHub Releases](https://git
 cargo install entangled-cli
 ```
 
+### As a Library
+
+```toml
+[dependencies]
+entangled-rs = "0.2"
+```
+
+The package is `entangled-rs` because `entangled` on crates.io belongs to an
+unrelated project. The library itself is still named `entangled`, so code
+imports it under that name:
+
+```rust
+use entangled::Context;
+```
+
+Default features include `highlight` (syntect, for the weave HTML backend).
+Disable it with `default-features = false` for a smaller build; weave then
+emits semantic `language-xxx` classes instead of inline colours.
+
+See [Library API](#library-api) for usage.
+
 ### From Source
 
 ```bash
-git clone https://github.com/entangled/entangled-rs
+git clone https://github.com/shakfu/entangled-rs
 cd entangled-rs
 cargo install --path entangled-cli
 ```
@@ -633,6 +654,8 @@ This project is organized as a Cargo workspace:
 - [Benchmarks](docs/benchmarks.md) - Performance comparison of implementations
 
 ### Library API
+
+Add the crate as shown in [As a Library](#as-a-library).
 
 #### Basic Usage
 

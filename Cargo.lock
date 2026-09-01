@@ -390,8 +390,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
-name = "entangled"
-version = "0.2.0"
+name = "entangled-cli"
+version = "0.2.1"
+dependencies = [
+ "chrono",
+ "clap",
+ "entangled-rs",
+ "glob",
+ "notify",
+ "serde_json",
+ "tempfile",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "entangled-rs"
+version = "0.2.1"
 dependencies = [
  "chrono",
  "clap",
@@ -415,22 +431,6 @@ dependencies = [
  "tokio",
  "toml",
  "tracing",
-]
-
-[[package]]
-name = "entangled-cli"
-version = "0.2.0"
-dependencies = [
- "chrono",
- "clap",
- "entangled",
- "glob",
- "notify",
- "serde_json",
- "tempfile",
- "toml",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -953,9 +953,9 @@ checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pyentangled"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
- "entangled",
+ "entangled-rs",
  "pyo3",
 ]
 

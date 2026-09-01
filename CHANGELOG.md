@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- **The library crate publishes as `entangled-rs`.** `entangled` on crates.io is an unrelated fork-join executor and cannot be reclaimed. The lib target is still named `entangled`, so dependents write `entangled-rs = "0.2"` in `Cargo.toml` and `use entangled::...` in code, as `xml-rs` does for `xml`. The CLI crate (`entangled-cli`) and its binary (`entangled`) are unchanged.
+
+- Manifest `authors` and `repository` now name this fork rather than the upstream Python project.
+
 ## [0.2.1]
 
 ### Fixed

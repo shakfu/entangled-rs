@@ -1,11 +1,15 @@
 [package]
-name = "entangled"
+name = "entangled-rs"
 version = "0.2.1"
 edition = "2021"
 description = "Literate programming engine - Rust translation"
 license = "MIT"
-authors = ["Entangled Contributors"]
-repository = "https://github.com/entangled/entangled-rs"
+authors = ["Shakeeb Alireza <shakeeb.alireza@rezayat.net>"]
+repository = "https://github.com/shakfu/entangled-rs"
+
+[lib]
+name = "entangled"
+path = "src/lib.rs"
 
 [dependencies]
 nom = "8"
