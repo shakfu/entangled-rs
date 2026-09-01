@@ -6,7 +6,7 @@ This document provides an architectural overview of the Entangled literate progr
 
 The project is organized as a Cargo workspace with three crates:
 
-```
+```text
 entangled-rs/
   Cargo.toml              # Workspace definition
   entangled/              # Core library
@@ -24,7 +24,7 @@ entangled-rs/
 
 ## Core Library Modules
 
-```
+```text
 entangled/src/
   lib.rs              # Public exports
   config/             # Configuration management
@@ -53,7 +53,7 @@ entangled/src/
 
 ### Configuration (`config/`)
 
-```
+```text
 Config
   source_patterns: Vec<String>    # Glob patterns for markdown files
   annotation: AnnotationMethod    # Standard, Naked, or Supplemental
@@ -74,7 +74,7 @@ Language
 
 ### Data Model (`model/`)
 
-```
+```text
 CodeBlock
   id: ReferenceId                 # Unique identifier
   language: Option<String>        # Language identifier
@@ -99,7 +99,7 @@ ReferenceMap
 
 ### File I/O (`io/`)
 
-```
+```text
 Transaction
   actions: Vec<Box<dyn Action>>   # Pending file operations
 
@@ -120,7 +120,7 @@ FileCache (trait)
 
 ### Interface (`interface/`)
 
-```
+```text
 Context
   config: Config
   hooks: HookRegistry
@@ -137,7 +137,7 @@ Document
 
 ### Hooks (`hooks/`)
 
-```
+```text
 Hook (trait)
   pre_tangle(block) -> PreTangleResult
   post_tangle(content, block) -> PostTangleResult
@@ -156,7 +156,7 @@ Built-in hooks:
 
 ### Tangle (Markdown to Code)
 
-```
+```text
 1. Load Configuration
    Context::from_current_dir()
      -> Finds entangled.toml
@@ -205,7 +205,7 @@ do not depend on which files were selected.
 
 ### Stitch (Code to Markdown)
 
-```
+```text
 1. Load source markdown files
    -> Extract all code blocks into ReferenceMap
 
@@ -222,7 +222,7 @@ do not depend on which files were selected.
 
 ### Sync (Bidirectional)
 
-```
+```text
 1. Stitch first
    -> Apply code changes back to markdown
 
@@ -237,7 +237,7 @@ do not depend on which files were selected.
 
 The tangling algorithm recursively expands reference patterns:
 
-```
+```text
 Input markdown:
   ```python #main file=output.py
   <<imports>>
@@ -253,17 +253,22 @@ Input markdown:
   ```
 
 Expansion process:
-  1. Start with "main" reference
-  2. Find line "<<imports>>" -> expand recursively
-  3. Find line "<<body>>" -> expand recursively
-  4. Preserve indentation from parent block
+
+1. Start with "main" reference
+2. Find line "<<imports>>" -> expand recursively
+3. Find line "<<body>>" -> expand recursively
+4. Preserve indentation from parent block
 
 Output (with annotations):
-  # ~/~ begin <<main[0]>>
+
+## ~/~ begin <<main[0]>>
+
   import sys
   print("hello")
-  # ~/~ end
-```
+
+## ~/~ end
+
+```text
 
 **Cycle Detection**: A `CycleDetector` tracks the expansion stack to prevent infinite loops (e.g., `a -> b -> a`).
 
@@ -272,6 +277,7 @@ Output (with annotations):
 The FileDB enables safe concurrent editing:
 
 ```
+
 1. On tangle:
    - Compute SHA256 of new content
    - Check if file exists and hash differs from DB
@@ -283,7 +289,8 @@ The FileDB enables safe concurrent editing:
 2. On stitch:
    - Compare tangled file content with source blocks
    - Detect if code was modified externally
-```
+
+```text
 
 ## Annotation Format
 
@@ -299,9 +306,9 @@ code content here
 - Reference ID includes instance count for disambiguation
 - Markers are configurable via `Markers` config
 
-## Type Relationships
+### Type Relationships
 
-```
+```text
 Context
   Config
     AnnotationMethod
@@ -324,7 +331,7 @@ Transaction
   Action[]
 ```
 
-## CLI Layer
+### CLI Layer
 
 The CLI (`entangled-cli`) provides commands that use the library:
 
@@ -337,11 +344,11 @@ The CLI (`entangled-cli`) provides commands that use the library:
 | `status` | Read `Context` state |
 | `reset` | Clear `FileDB` |
 
-## Python Bindings
+### Python Bindings
 
 The `pyentangled` crate provides Python access via PyO3:
 
-```
+```text
 pyentangled._core (compiled Rust module)
   Config          -> PyConfig wrapper
   Context         -> PyContext wrapper
@@ -360,7 +367,7 @@ pyentangled (Python package)
   _core.pyi       # Type stubs for IDE support
 ```
 
-## Design Principles
+### Design Principles
 
 1. **Separation of Concerns**: Library is independent of CLI
 2. **Transaction Safety**: File operations are atomic with rollback

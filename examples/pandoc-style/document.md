@@ -7,7 +7,7 @@ on the command line.
 
 ## A Rust program
 
-``` {.rust #main file=main.rs}
+```text {.rust #main file=main.rs}
 fn main() {
     <<print-message>>
 }
@@ -15,7 +15,7 @@ fn main() {
 
 The message:
 
-``` {.rust #print-message}
+```text {.rust #print-message}
     println!("Hello from Pandoc-style entangled!");
 ```
 

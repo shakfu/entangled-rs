@@ -1,6 +1,6 @@
 [package]
 name = "entangled"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 description = "Literate programming engine - Rust translation"
 license = "MIT"

@@ -4,7 +4,7 @@ author: "Literate Data Science with Entangled"
 format: html
 ---
 
-# Introduction
+## Introduction
 
 This report analyses the Palmer Penguins dataset—a popular alternative to
 Iris for teaching data science. We explore how body mass, flipper length, and
@@ -15,7 +15,7 @@ The analysis is written as a **Quarto literate program**. Entangled extracts
 the code blocks into standalone Python scripts that can be run independently
 of the notebook, while the `.qmd` file remains the single source of truth.
 
-# Setup
+## Setup
 
 We rely on the Python data-science stack: `pandas` for data manipulation,
 `matplotlib` and `seaborn` for visualisation, and `scipy` for statistics.
@@ -44,7 +44,7 @@ OUTPUT_DIR = Path("figures")
 OUTPUT_DIR.mkdir(exist_ok=True)
 ```
 
-# Loading the data
+## Loading the data
 
 The dataset ships with seaborn, so loading is trivial. We drop rows with
 missing measurements to keep downstream code simple.
@@ -67,9 +67,9 @@ if __name__ == "__main__":
     print(df.describe())
 ```
 
-# Exploratory analysis
+## Exploratory analysis
 
-## Species distribution
+### Species distribution
 
 How many penguins of each species were measured on each island?
 
@@ -88,7 +88,7 @@ def plot_species_counts(df: pd.DataFrame) -> None:
     plt.close(fig)
 ```
 
-## Body mass vs. flipper length
+### Body mass vs. flipper length
 
 A scatter plot coloured by species reveals clear clustering:
 
@@ -108,7 +108,7 @@ def plot_mass_vs_flipper(df: pd.DataFrame) -> None:
     plt.close(fig)
 ```
 
-## Bill dimensions
+### Bill dimensions
 
 Bill length and depth together can almost perfectly separate the three
 species. This is the most diagnostic pair of features.
@@ -129,7 +129,7 @@ def plot_bill_dimensions(df: pd.DataFrame) -> None:
     plt.close(fig)
 ```
 
-## Distribution of body mass
+### Distribution of body mass
 
 A box plot shows both central tendency and spread:
 
@@ -145,9 +145,9 @@ def plot_mass_boxplot(df: pd.DataFrame) -> None:
     plt.close(fig)
 ```
 
-# Statistical tests
+## Statistical tests
 
-## ANOVA: body mass across species
+### ANOVA: body mass across species
 
 We use a one-way ANOVA to test whether mean body mass differs significantly
 across the three species.
@@ -163,7 +163,7 @@ def anova_body_mass(df: pd.DataFrame) -> dict:
     return result
 ```
 
-## Pairwise t-tests
+### Pairwise t-tests
 
 If the ANOVA is significant we follow up with pairwise comparisons using
 Welch's t-test (which does not assume equal variances):
@@ -187,7 +187,7 @@ def pairwise_ttests(df: pd.DataFrame) -> pd.DataFrame:
     return result
 ```
 
-# Summary statistics
+## Summary statistics
 
 A compact summary table rounded for presentation:
 
@@ -207,7 +207,7 @@ def summary_table(df: pd.DataFrame) -> pd.DataFrame:
     return agg
 ```
 
-# Putting it all together
+## Putting it all together
 
 The `analysis.py` script ties every step into a single pipeline that can be
 run from the command line:
@@ -256,7 +256,7 @@ if __name__ == "__main__":
     main()
 ```
 
-# Conclusion
+## Conclusion
 
 Even with only four morphological measurements the three penguin species
 separate cleanly. Gentoo penguins are noticeably larger (higher body mass and

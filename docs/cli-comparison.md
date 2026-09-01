@@ -32,7 +32,7 @@ Both CLIs support identical global options:
 
 Extract code from markdown files.
 
-```
+```text
 entangled tangle [OPTIONS] [FILES...]
 pyentangled tangle [OPTIONS] [FILES...]
 ```
@@ -47,7 +47,7 @@ pyentangled tangle [OPTIONS] [FILES...]
 
 Update markdown from modified code files.
 
-```
+```text
 entangled stitch [OPTIONS] [FILES...]
 pyentangled stitch [OPTIONS] [FILES...]
 ```
@@ -62,7 +62,7 @@ pyentangled stitch [OPTIONS] [FILES...]
 
 Synchronize markdown and code files (stitch then tangle).
 
-```
+```text
 entangled sync [OPTIONS]
 pyentangled sync [OPTIONS]
 ```
@@ -75,7 +75,7 @@ pyentangled sync [OPTIONS]
 
 Watch for changes and sync automatically.
 
-```
+```text
 entangled watch [OPTIONS]
 pyentangled watch [OPTIONS]
 ```
@@ -88,7 +88,7 @@ pyentangled watch [OPTIONS]
 
 Show status of files.
 
-```
+```text
 entangled status [OPTIONS]
 pyentangled status [OPTIONS]
 ```
@@ -101,7 +101,7 @@ pyentangled status [OPTIONS]
 
 Reset the file database.
 
-```
+```text
 entangled reset [OPTIONS]
 pyentangled reset [OPTIONS]
 ```
@@ -118,11 +118,13 @@ pyentangled reset [OPTIONS]
 The watch implementations differ in how they detect file changes:
 
 **Rust (entangled)**:
+
 - Uses the `notify` crate for native file system events
 - More efficient, lower CPU usage
 - Instant detection of changes
 
 **Python (pyentangled)**:
+
 - Uses polling with `time.sleep()` and `Path.rglob()`
 - No external dependencies (stdlib only)
 - Polls every 500ms by default
@@ -131,10 +133,12 @@ The watch implementations differ in how they detect file changes:
 ### Logging
 
 **Rust**:
+
 - Uses `tracing-subscriber` with `EnvFilter`
 - Supports `RUST_LOG` environment variable
 
 **Python**:
+
 - Uses `logging.basicConfig()`
 - Simple INFO/DEBUG levels based on `-v` flag
 
@@ -159,11 +163,13 @@ identical.
 ## When to Use Which
 
 **Use `entangled` (Rust CLI) when**:
+
 - You want the most efficient file watching
 - You're not using Python in your project
 - You want a single binary with no runtime dependencies
 
 **Use `pyentangled` (Python CLI) when**:
+
 - You're already using Python and want to integrate with your workflow
 - You want to use the Python API programmatically
 - You prefer pip/uv installation over cargo

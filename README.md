@@ -1,20 +1,16 @@
 # entangled-rs
 
-This is a rust translation of Johannes Hidding's [entangled](https://github.com/entangled/entangled), a literate programming engine. It extracts code from markdown files (`tangle`) and synchronize changes back (`stitch`). 
+This is a rust translation of Johannes Hidding's [entangled](https://github.com/entangled/entangled), a literate programming engine. It extracts code from markdown files (`tangle`) and synchronize changes back (`stitch`).
 
 To quote the original project's explanation:
 
 > Entangled makes writing literate programs easier by keeping code blocks in markdown up-to-date with generated source files. By monitoring the tangled source files, any change in the master document or source files is reflected in the other. In practice this means:
 
-> Write well documented code using Markdown.
-> Use any programming language you like (or are forced to use).
-> Keep debugging and using other IDE features without change.
-> Generate a report in PDF or HTML from the same source (see examples at Entangled homepage).
+> Write well documented code using Markdown. > Use any programming language you like (or are forced to use). > Keep debugging and using other IDE features without change. > Generate a report in PDF or HTML from the same source (see examples at Entangled homepage).
 
 ## Overview
 
 entangled-rs allows you to write documentation and code together in markdown files. Code blocks are extracted ("tangled") into source files, and changes to those files can be synchronized back ("stitched") into the markdown.
-
 
     # My Program
     
@@ -27,16 +23,27 @@ Running `entangled tangle` produces `hello.py` with the code block contents.
 ## Features
 
 - **Tangle**: Extract code blocks from markdown into source files
+
 - **Stitch**: Update markdown when tangled files are modified
+
 - **Sync**: Bidirectional synchronization between markdown and code
+
 - **Watch**: Monitor files for changes and sync automatically
+
 - **Weave**: Render documents to self-contained HTML (with clickable code cross-references), clean markdown, or PDF/docx/LaTeX/EPUB via pandoc
+
 - **Eval**: Execute runnable code blocks and capture their output for reproducible reports (cached, shown in woven output)
+
 - **Check**: Validate references, output targets, and cycles -- a CI/pre-commit gate
+
 - **Graph**: Emit the block dependency graph as Graphviz DOT or Mermaid
+
 - **References**: Code blocks can reference other blocks with `<<refname>>`
+
 - **Annotations**: Generated files include markers for round-trip editing
+
 - **40+ Languages**: Built-in comment style configurations
+
 - **Conflict Detection**: Warns when files are modified externally
 
 ## Installation
@@ -88,8 +95,7 @@ pyentangled eval
 pyentangled config
 ```
 
-`weave` is Rust-CLI-only: its Pandoc integration and output-path handling live
-in the native CLI. Use `entangled weave` for rendering.
+`weave` is Rust-CLI-only: its Pandoc integration and output-path handling live in the native CLI. Use `entangled weave` for rendering.
 
 See [Python Bindings API](#python-bindings-api) for library usage.
 
@@ -109,26 +115,26 @@ Or set it up by hand:
 
 1. Create a markdown file with code blocks:
 
-    # Hello World
+## Hello World
 
-    ```python #main file=hello.py
-    #!/usr/bin/env python3
-    <<imports>>
-    
-    def main():
-        <<body>>
-    
-    if __name__ == "__main__":
-        main()
-    ```
+```python #main file=hello.py
+#!/usr/bin/env python3
+<<imports>>
 
-    ```python #imports
-    import sys
-    ```
-    
-    ```python #body
-    print("Hello from Entangled!")
-    ```
+def main():
+<<body>>
+
+if __name__ == "__main__":
+main()
+```
+
+```python #imports
+import sys
+```
+
+```python #body
+print("Hello from Entangled!")
+```
 
 2. Create `entangled.toml`:
 
@@ -149,9 +155,9 @@ entangled tangle
 cat hello.py
 ```
 
-## CLI Reference
+### CLI Reference
 
-### Commands
+#### Commands
 
 | Command | Description |
 |---------|-------------|
@@ -168,7 +174,7 @@ cat hello.py
 | `init` | Initialize a new entangled project (`--example` scaffolds a starter doc) |
 | `locate` | Map a tangled file line back to its markdown source |
 
-### Global Options
+#### Global Options
 
 | Option | Description |
 |--------|-------------|
@@ -182,7 +188,7 @@ cat hello.py
 
 Available styles: `entangled-rs`, `pandoc`, `quarto`, `knitr`
 
-### Tangle Options
+#### Tangle Options
 
 ```bash
 entangled tangle [OPTIONS] [-g PATTERN]... [FILES...]
@@ -195,7 +201,7 @@ entangled tangle [OPTIONS] [-g PATTERN]... [FILES...]
 | `-d, --diff` | Show unified diffs of what would change |
 | `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
-### Stitch Options
+#### Stitch Options
 
 ```bash
 entangled stitch [OPTIONS] [-g PATTERN]... [FILES...]
@@ -208,7 +214,7 @@ entangled stitch [OPTIONS] [-g PATTERN]... [FILES...]
 | `-d, --diff` | Show unified diffs of what would change |
 | `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
-### Sync Options
+#### Sync Options
 
 ```bash
 entangled sync [OPTIONS]
@@ -220,7 +226,7 @@ entangled sync [OPTIONS]
 | `-n, --dry-run` | Show what would be done |
 | `-d, --diff` | Show unified diffs of what would change |
 
-### Locate Options
+#### Locate Options
 
 ```bash
 entangled locate <FILE:LINE>
@@ -228,7 +234,7 @@ entangled locate <FILE:LINE>
 
 Maps a line in a tangled output file back to its markdown source location. Useful for navigating from compiler errors to the originating documentation.
 
-### Watch Options
+#### Watch Options
 
 ```bash
 entangled watch [OPTIONS]
@@ -238,7 +244,7 @@ entangled watch [OPTIONS]
 |--------|-------------|
 | `-d, --debounce <MS>` | Debounce delay in milliseconds (default: 100) |
 
-### Weave Options
+#### Weave Options
 
 ```bash
 entangled weave [OPTIONS] [-g PATTERN]... [FILES...]
@@ -252,7 +258,7 @@ entangled weave [OPTIONS] [-g PATTERN]... [FILES...]
 | `--pandoc <PATH>` | Path to the pandoc executable (default: `pandoc`) |
 | `-g, --glob <PATTERN>` | Filter source files by glob pattern (repeatable) |
 
-### Eval Options
+#### Eval Options
 
 ```bash
 entangled eval [OPTIONS]
@@ -263,7 +269,7 @@ entangled eval [OPTIONS]
 | `-f, --force` | Re-run every block even if a fresh cached result exists |
 | `-n, --dry-run` | Report which blocks would run without executing them |
 
-### Check Options
+#### Check Options
 
 ```bash
 entangled check [OPTIONS]
@@ -274,16 +280,13 @@ entangled check [OPTIONS]
 | `--json` | Emit findings as JSON |
 | `--strict` | Treat warnings as errors |
 
-`check` reports **dangling references** (a `<<name>>` with no defining block),
-**target collisions** (two block names writing the same `file=`), **reference
-cycles**, and **orphan blocks** (never referenced or tangled). It exits non-zero
-when any error is found, so it works as a pre-commit or CI gate:
+`check` reports **dangling references** (a `<<name>>` with no defining block), **target collisions** (two block names writing the same `file=`), **reference cycles**, and **orphan blocks** (never referenced or tangled). It exits non-zero when any error is found, so it works as a pre-commit or CI gate:
 
 ```bash
 entangled check || exit 1
 ```
 
-### Graph Options
+#### Graph Options
 
 ```bash
 entangled graph [OPTIONS]
@@ -294,31 +297,22 @@ entangled graph [OPTIONS]
 | `-f, --format <FORMAT>` | `dot` (default) or `mermaid` |
 | `-o, --output <PATH>` | Output file (stdout if omitted) |
 
-Emits the block reference-dependency graph. Tangle roots (blocks with a `file=`
-target) and dangling references are styled distinctly:
+Emits the block reference-dependency graph. Tangle roots (blocks with a `file=` target) and dangling references are styled distinctly:
 
 ```bash
 entangled graph -o graph.dot && dot -Tsvg graph.dot -o graph.svg
 entangled graph --format mermaid   # paste into a Markdown mermaid block
 ```
 
-## Weaving (documentation output)
+### Weaving (documentation output)
 
-Where `tangle` produces the machine-readable half of a literate program, `weave`
-produces the human-readable half: a typeset document that interleaves your prose
-with the code blocks. This is the counterpart that lets a single markdown source
-serve as both the program and its documentation.
+Where `tangle` produces the machine-readable half of a literate program, `weave` produces the human-readable half: a typeset document that interleaves your prose with the code blocks. This is the counterpart that lets a single markdown source serve as both the program and its documentation.
 
 Weaving is a two-layer design:
 
-1. A **transform** rewrites Entangled-flavored markdown into a renderer-agnostic
-   form. This is where the literate-programming value lives: each code block gets
-   a caption (its name and target file), same-named blocks get continuation
-   markers (`2/3`), each `<<reference>>` becomes a cross-reference, and every
-   block records which other blocks it is *used in*.
-2. **Backends** render the transformed document. HTML and clean markdown are
-   produced natively (no external tools); every other format is generated by
-   piping the clean markdown through [pandoc](https://pandoc.org).
+1. A **transform** rewrites Entangled-flavored markdown into a renderer-agnostic form. This is where the literate-programming value lives: each code block gets a caption (its name and target file), same-named blocks get continuation markers (`2/3`), each `<<reference>>` becomes a cross-reference, and every block records which other blocks it is *used in*.
+
+2. **Backends** render the transformed document. HTML and clean markdown are produced natively (no external tools); every other format is generated by piping the clean markdown through [pandoc](https://pandoc.org).
 
 ```bash
 # Self-contained HTML (offline, theme-aware, with clickable cross-references)
@@ -336,28 +330,15 @@ entangled weave README.md --to docx -o report.docx
 entangled weave
 ```
 
-The native HTML backend is fully self-contained: prose is rendered with
-`pulldown-cmark`, code is syntax-highlighted server-side with `syntect`, styles
-are embedded, `<<references>>` become intra-document links to the block that
-defines them, and each block shows a "used in" footer linking back to its
-callers. It adapts to light and dark themes via `prefers-color-scheme` and
-requires no network access.
+The native HTML backend is fully self-contained: prose is rendered with `pulldown-cmark`, code is syntax-highlighted server-side with `syntect`, styles are embedded, `<<references>>` become intra-document links to the block that defines them, and each block shows a "used in" footer linking back to its callers. It adapts to light and dark themes via `prefers-color-scheme` and requires no network access.
 
-Syntax highlighting is enabled by the default `highlight` cargo feature. Build
-with `--no-default-features` to drop the `syntect` dependency for a smaller
-binary; code then falls back to plain `language-xxx`-classed blocks.
+Syntax highlighting is enabled by the default `highlight` cargo feature. Build with `--no-default-features` to drop the `syntect` dependency for a smaller binary; code then falls back to plain `language-xxx`-classed blocks.
 
-Only the native targets (`html`, `markdown`, `quarto`) work without pandoc.
-Pandoc-backed formats additionally require pandoc on the `PATH` (or `--pandoc`),
-and `pdf` requires a LaTeX engine as usual.
+Only the native targets (`html`, `markdown`, `quarto`) work without pandoc. Pandoc-backed formats additionally require pandoc on the `PATH` (or `--pandoc`), and `pdf` requires a LaTeX engine as usual.
 
-## Reproducible output (executable blocks)
+### Reproducible output (executable blocks)
 
-A code block marked with an `eval` attribute is *runnable*. `entangled eval`
-expands its references, pipes the resulting source to a configured runner
-(interpreter) on standard input, and captures the output. `weave` then renders
-that output beneath the block, giving reproducible reports and tutorials where
-the shown results are guaranteed to match the code.
+A code block marked with an `eval` attribute is *runnable*. `entangled eval` expands its references, pipes the resulting source to a configured runner (interpreter) on standard input, and captures the output. `weave` then renders that output beneath the block, giving reproducible reports and tutorials where the shown results are guaranteed to match the code.
 
 ````markdown
 ```python #answer eval=python
@@ -372,18 +353,15 @@ entangled weave -o out.html   # renders the block with a "42" output panel
 
 Key points:
 
-- **Explicit and opt-in.** Because it runs arbitrary code, execution happens
-  *only* on `entangled eval` -- never during tangle, stitch, or weave.
-- **Cached and reproducible.** Results are stored in `.entangled/eval-cache.json`
-  keyed by block name and a hash of the expanded source. A block is re-run only
-  when its code (or runner) changes; use `--force` to re-run everything.
-- **The `eval` value names the runner.** `eval=python`, `eval=sh`, `eval=node`,
-  etc. The special value `eval=true` uses the block's own language as the runner.
-- **Failures are captured, not fatal.** A non-zero exit or missing interpreter is
-  recorded (and shown as an error panel in weave) without aborting the run.
+- **Explicit and opt-in.** Because it runs arbitrary code, execution happens *only* on `entangled eval` -- never during tangle, stitch, or weave.
 
-Built-in runners include `python`, `sh`/`bash`, `node`, `ruby`, `perl`, `lua`,
-`php`, `r`, and `deno`. Add or override them in `entangled.toml`:
+- **Cached and reproducible.** Results are stored in `.entangled/eval-cache.json` keyed by block name and a hash of the expanded source. A block is re-run only when its code (or runner) changes; use `--force` to re-run everything.
+
+- **The `eval` value names the runner.** `eval=python`, `eval=sh`, `eval=node`, etc. The special value `eval=true` uses the block's own language as the runner.
+
+- **Failures are captured, not fatal.** A non-zero exit or missing interpreter is recorded (and shown as an error panel in weave) without aborting the run.
+
+Built-in runners include `python`, `sh`/`bash`, `node`, `ruby`, `perl`, `lua`, `php`, `r`, and `deno`. Add or override them in `entangled.toml`:
 
 ```toml
 [eval.runners]
@@ -392,11 +370,11 @@ python = ["python3"]
 sage = ["sage", "-python"]
 ```
 
-## Code Block Syntax
+### Code Block Syntax
 
 Entangled supports multiple code block syntax styles to work with different document formats.
 
-### Supported Styles
+#### Supported Styles
 
 | Style | File Extension | Example |
 |-------|----------------|---------|
@@ -406,11 +384,14 @@ Entangled supports multiple code block syntax styles to work with different docu
 | `knitr` | `.Rmd` | `` ```{python, label=name, file=out.py} `` |
 
 Style is determined automatically by file extension:
+
 - `.qmd` files always use Quarto style
+
 - `.Rmd` files always use Knitr style
+
 - `.md` files use the configured default (or `entangled-rs` if not set)
 
-### entangled-rs Style (Default)
+#### entangled-rs Style (Default)
 
 The native style uses space-separated properties:
 
@@ -426,7 +407,7 @@ print("Hello")
 | `#name` | Reference name for the block |
 | `file=path` | Output file path (makes block a "target") |
 
-### Pandoc Style
+#### Pandoc Style
 
 The original Entangled/Pandoc style uses curly braces with dot-prefixed language:
 
@@ -436,7 +417,7 @@ print("Hello")
 ```
 ````
 
-### Quarto Style
+#### Quarto Style
 
 Quarto style uses simple braces for language and `#|` comments for options:
 
@@ -450,7 +431,7 @@ print("Hello")
 
 By default, `#|` lines are stripped from tangled output. Set `strip_quarto_options = false` in config to preserve them.
 
-### Knitr Style
+#### Knitr Style
 
 RMarkdown/knitr style uses comma-separated options:
 
@@ -460,7 +441,7 @@ print("Hello")
 ```
 ````
 
-### References
+#### References
 
 Reference other blocks using `<<refname>>`:
 
@@ -482,7 +463,7 @@ def hello():
 
 References are expanded recursively with proper indentation preservation.
 
-### Multiple Blocks with Same Name
+#### Multiple Blocks with Same Name
 
 Blocks with the same name are concatenated:
 
@@ -497,12 +478,13 @@ import os
 ````
 
 Results in:
+
 ```python
 import sys
 import os
 ```
 
-## Configuration
+### Configuration
 
 Create `entangled.toml` (or `.entangled.toml`) in your project root. Both file names are recognized and searched for in the current directory and its parents.
 
@@ -550,7 +532,7 @@ comment = "##"
 identifiers = ["ml", "myl"]
 ```
 
-### Style Options
+#### Style Options
 
 | Option | Description |
 |--------|-------------|
@@ -559,7 +541,7 @@ identifiers = ["ml", "myl"]
 
 Note: `.qmd` and `.Rmd` files always use their native styles regardless of config.
 
-### Annotation Methods
+#### Annotation Methods
 
 | Method | Description |
 |--------|-------------|
@@ -568,13 +550,13 @@ Note: `.qmd` and `.Rmd` files always use their native styles regardless of confi
 | `bare` | Blank lines between block boundaries (one-way) |
 | `supplemental` | Annotations for documentation output (supports stitch) |
 
-### Output Directory
+#### Output Directory
 
 When `output_dir` is set, all *relative* tangled file paths are prefixed with the specified directory, which is itself resolved relative to the project root. For example, with `output_dir = "src"`, a code block with `file=main.py` is written to `src/main.py`. Absolute targets are unaffected.
 
 The same resolution is used by `tangle`, `stitch`, `status` and the file database, so a project can turn `output_dir` on without any command losing track of its files.
 
-### Generated File Safety
+#### Generated File Safety
 
 `file=` targets come from documents, which Entangled treats as untrusted input. By default a target that resolves outside the project directory -- through `..` or an absolute path -- is rejected before anything is written:
 
@@ -583,14 +565,14 @@ The same resolution is used by `tangle`, `stitch`, `status` and the file databas
 allow_external_targets = true
 ```
 
-### Namespace Default
+#### Namespace Default
 
 | Value | Behavior |
 |-------|----------|
 | `file` | IDs prefixed with filename: `file.md#name` |
 | `none` | IDs used as-is: `name` |
 
-### Hooks
+#### Hooks
 
 Hooks process code blocks during tangling. Enable them in the `[hooks]` config section:
 
@@ -603,7 +585,7 @@ Hooks are useful when you want the shebang or license header to appear in the fi
 
 Headers are lifted out *before* reference expansion and emitted exactly once, above the annotation markers, in the order the hooks are listed above. Both hooks compose, so an SPDX line beneath a shebang is still recognised. Stitching puts the header back into the markdown block it came from, so the round trip is lossless.
 
-## Annotation Format
+### Annotation Format
 
 Generated files include markers for round-trip editing:
 
@@ -617,14 +599,16 @@ def main():
 ```
 
 The format is:
+
 - `# ~/~ begin <<name[index]>>` - Start of block
+
 - `# ~/~ end` - End of block
 
 Comment prefix varies by language (`//`, `--`, `/* */`, etc.).
 
 With `annotation = "bare"`, markers are replaced by blank lines, giving clean output with breathing room between blocks. With `annotation = "naked"`, markers are omitted entirely. Both modes are one-way (no stitch support).
 
-## Project Structure
+### Project Structure
 
 This project is organized as a Cargo workspace:
 
@@ -634,20 +618,23 @@ This project is organized as a Cargo workspace:
 | `entangled-cli` | Binary | 2021 | Command-line interface |
 | `pyentangled` | Python | 2024 | Python bindings and CLI covering every Rust command except `weave` (PyO3/maturin) |
 
-### Rust Version Requirements
+#### Rust Version Requirements
 
 - `entangled` and `entangled-cli` use Rust edition 2021 and should compile with any recent stable Rust toolchain.
+
 - `pyentangled` uses Rust edition 2024, requiring **Rust 1.85 or later**. This crate is excluded from default workspace builds (`cargo build` / `cargo test` skip it). Build it with `cd pyentangled && maturin develop`.
 
-## Documentation
+### Documentation
 
 - [Architecture Overview](docs/architecture.md) - System design and module organization
+
 - [CLI Comparison](docs/cli-comparison.md) - Comparison of Rust and Python CLIs
+
 - [Benchmarks](docs/benchmarks.md) - Performance comparison of implementations
 
-## Library API
+### Library API
 
-### Basic Usage
+#### Basic Usage
 
 ```rust
 use entangled::interface::Context;
@@ -662,9 +649,9 @@ transaction.execute(&mut ctx.filedb)?;
 ctx.save_filedb()?;
 ```
 
-### Core Types
+#### Core Types
 
-#### Config
+##### Config
 
 ```rust
 use entangled::Config;
@@ -676,7 +663,7 @@ config.namespace_default = NamespaceDefault::None;
 config.source_patterns = vec!["docs/**/*.md".to_string()];
 ```
 
-#### Context
+##### Context
 
 ```rust
 use entangled::Context;
@@ -689,7 +676,7 @@ let ctx = Context::new(config, PathBuf::from("."))?;
 let ctx = Context::from_current_dir()?;
 ```
 
-#### ReferenceMap
+##### ReferenceMap
 
 ```rust
 use entangled::model::{ReferenceMap, CodeBlock, ReferenceName};
@@ -708,7 +695,7 @@ for target in refs.targets() {
 }
 ```
 
-#### Tangle
+##### Tangle
 
 ```rust
 use entangled::model::{tangle_ref, ReferenceMap, ReferenceName};
@@ -723,7 +710,7 @@ let markers = Markers::default();
 let output = tangle_ref(&refs, &name, Some(&comment), Some(&markers))?;
 ```
 
-### Parsing
+#### Parsing
 
 ```rust
 use entangled::readers::{parse_markdown, ParsedDocument};
@@ -739,7 +726,7 @@ for block in doc.refs.blocks() {
 }
 ```
 
-### Transactions
+#### Transactions
 
 ```rust
 use entangled::io::{Transaction, FileDB};
@@ -752,7 +739,7 @@ let mut db = FileDB::new();
 tx.execute(&mut db)?;
 ```
 
-### Hooks
+#### Hooks
 
 ```rust
 use entangled::hooks::{Hook, HookRegistry, ShebangHook, SpdxLicenseHook};
@@ -765,9 +752,9 @@ registry.add(SpdxLicenseHook::new());
 let result = registry.run_post_tangle(&content, &block)?;
 ```
 
-## Python Bindings API
+### Python Bindings API
 
-### Basic Usage
+#### Basic Usage
 
 ```python
 from pyentangled import Context, tangle_documents, execute_transaction
@@ -779,7 +766,7 @@ if not tx.is_empty():
     ctx.save_filedb()
 ```
 
-### Configuration
+#### Configuration
 
 ```python
 from pyentangled import Config, Context
@@ -795,7 +782,7 @@ ctx = Context(config=cfg, base_dir="/path/to/project")
 
 Available Config properties: `style`, `annotation`, `namespace_default`, `source_patterns`, `output_dir`, `hooks_shebang`, `hooks_spdx_license`, `filedb_path`, `strip_quarto_options`, `watch_debounce_ms`.
 
-### File-Specific Operations
+#### File-Specific Operations
 
 ```python
 from pyentangled import tangle_files, stitch_files
@@ -807,7 +794,7 @@ tx = tangle_files(ctx, ["chapter1.md", "chapter2.md"])
 tx = stitch_files(ctx, ["chapter1.md"])
 ```
 
-### Diffs and Dry Runs
+#### Diffs and Dry Runs
 
 ```python
 tx = tangle_documents(ctx)
@@ -815,7 +802,7 @@ for diff in tx.diffs():
     print(diff)
 ```
 
-### Source Location Mapping
+#### Source Location Mapping
 
 ```python
 from pyentangled import locate_source
@@ -825,7 +812,7 @@ if result:
     print(f"{result['source_file']}:{result['source_line']}")
 ```
 
-### Document Parsing
+#### Document Parsing
 
 ```python
 from pyentangled import Document, tangle_ref
@@ -837,7 +824,7 @@ for block in doc.blocks():
 output = tangle_ref(doc, "main", annotate=False)
 ```
 
-## Built-in Languages
+### Built-in Languages
 
 Entangled includes comment style configurations for 40+ languages:
 
@@ -862,7 +849,7 @@ Entangled includes comment style configurations for 40+ languages:
 | Lua           | `--`      |                |
 | ...           |           |                |
 
-## File Database
+### File Database
 
 Entangled tracks file states in `.entangled/filedb.json`:
 
@@ -883,26 +870,34 @@ Entangled tracks file states in `.entangled/filedb.json`:
 
 This enables conflict detection when files are modified externally.
 
-## Migrating from Python Entangled
+### Migrating from Python Entangled
 
 entangled-rs is designed as a drop-in replacement for the [Python Entangled](https://github.com/entangled/entangled) project.
 
-### What stays the same
+#### What stays the same
 
 - **Configuration format**: `entangled.toml` files are compatible. The same keys (`version`, `source_patterns`, `annotation`, `namespace_default`, `languages`, `watch`, `hooks`) are recognized.
+
 - **File database**: `.entangled/filedb.json` uses the same format. You can switch between implementations without resetting.
+
 - **Annotation markers**: The `# ~/~ begin/end` format is identical, so tangled files produced by either implementation are interchangeable.
+
 - **Code block syntax**: All four styles (entangled, Pandoc, Quarto, Knitr) are supported.
 
-### What's different
+#### What's different
 
 - **Performance**: 5-42x faster than the Python implementation (see [benchmarks](docs/benchmarks.md)).
+
 - **Default style**: entangled-rs defaults to its own native style (`#name file=path`). Set `style = "pandoc"` in config to match the Python default.
+
 - **Additional commands**: `init`, `locate`, `status`, and `reset` are new.
+
 - **Additional flags**: `--diff`, `--quiet`, `--dry-run` (on sync) are new.
+
 - **Hook activation**: Hooks (`shebang`, `spdx_license`) must be explicitly enabled in config. The `build` and `brei` hooks from Python Entangled are not yet implemented.
+
 - **No daemon mode**: The Python version supports `entangled daemon`. Use `entangled watch` instead (equivalent behavior).
 
-## License
+### License
 
 MIT License

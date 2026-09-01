@@ -51,7 +51,7 @@ pyentangled reset
 
 ### Options
 
-```
+```text
 pyentangled [OPTIONS] COMMAND
 
 Options:
@@ -162,12 +162,15 @@ def hello():
 ```python #greeting
 print("Hello, World!")
 ```
+
 """)
 
-# Tangle a specific reference
+## Tangle a specific reference
+
 code = tangle_ref(doc, "file:example.py", annotate=True)
 print(code)
-```
+
+```text
 
 ## Configuration
 
@@ -179,12 +182,12 @@ annotation = "standard"  # or "naked", "supplemented"
 namespace_default = "file"  # or "none"
 ```
 
-## Requirements
+### Requirements
 
 - Python 3.9+
 - No runtime dependencies (stdlib only)
 
-## Development
+### Development
 
 ```bash
 # Install dev dependencies
@@ -197,6 +200,6 @@ pytest
 maturin develop
 ```
 
-## License
+### License
 
 MIT

@@ -72,7 +72,7 @@ Comparison of three Entangled implementations on tangle operations.
 
 ## Performance Breakdown
 
-```
+```text
 entangled-cli:  [~5ms startup] + [~4.5us/block]
 pyentangled:    [~30ms Python startup] + [~4.5us/block]
 entangled:      [~200ms Python startup] + [~7.5us/block]
@@ -113,6 +113,7 @@ python3 benchmarks/compare_implementations.py --sizes 10,50,100,500,1000,5000,10
 ```
 
 Options:
+
 - `--sizes`: Comma-separated list of block counts
 - `--iterations`: Number of iterations per benchmark
 - `--rust-cli`: Path to entangled-cli binary
