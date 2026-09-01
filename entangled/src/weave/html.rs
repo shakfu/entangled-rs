@@ -7,13 +7,14 @@
 //! (light/dark via `prefers-color-scheme`), matching the project's
 //! single-binary, zero-runtime-dependency ethos.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use pulldown_cmark::{html, Options, Parser};
+use sha2::{Digest, Sha256};
 
 use super::highlight;
-use super::{CodeLine, WeaveCodeBlock, WeaveElement, WovenDocument};
+use super::{CodeLine, RefScope, WeaveCodeBlock, WeaveElement, WovenDocument};
 
 /// Options controlling HTML rendering.
 #[derive(Debug, Clone)]
@@ -40,13 +41,21 @@ impl WovenDocument {
     pub fn to_html(&self, options: &HtmlOptions) -> String {
         // Map each named block to the anchor of its first occurrence so that
         // references and "used in" links resolve to a stable target.
+        //
+        // Slugs are made unique across the whole document: `a!` and `a?` both
+        // reduce to `block-a`, and a name of pure punctuation reduces to
+        // nothing at all, so distinct blocks could otherwise end up sharing one
+        // HTML id and every link to either would be ambiguous.
         let mut first_anchor: HashMap<&str, String> = HashMap::new();
+        let mut claimed: HashSet<String> = HashSet::new();
         for element in &self.elements {
             if let WeaveElement::Code(block) = element {
                 if let Some(name) = &block.name {
-                    first_anchor
-                        .entry(name.as_str())
-                        .or_insert_with(|| slug(name));
+                    if !first_anchor.contains_key(name.as_str()) {
+                        let anchor = unique_slug(name, &claimed);
+                        claimed.insert(anchor.clone());
+                        first_anchor.insert(name.as_str(), anchor);
+                    }
                 }
             }
         }
@@ -116,10 +125,20 @@ fn render_block(out: &mut String, block: &WeaveCodeBlock, first_anchor: &HashMap
         return;
     }
 
-    // Anchor: first occurrence owns the bare slug; later ones get a suffix.
+    // Anchor: the name's unique base slug, plus the occurrence index for
+    // continuation blocks.
     let anchor = match &block.name {
-        Some(name) if block.index == 0 => slug(name),
-        Some(name) => format!("{}-{}", slug(name), block.index),
+        Some(name) => {
+            let base = first_anchor
+                .get(name.as_str())
+                .cloned()
+                .unwrap_or_else(|| slug(name));
+            if block.index == 0 {
+                base
+            } else {
+                format!("{}-{}", base, block.index)
+            }
+        }
         None => block
             .target
             .as_deref()
@@ -187,11 +206,16 @@ fn render_code_lines(block: &WeaveCodeBlock, first_anchor: &HashMap<&str, String
                 Some(highlighted) => out.push_str(&highlighted),
                 None => out.push_str(&escape_html(text)),
             },
-            CodeLine::Reference { indent, name } => {
+            CodeLine::Reference {
+                indent,
+                name,
+                scope,
+            } => {
                 out.push_str(&escape_html(indent));
                 let label = format!("&laquo;{}&raquo;", escape_html(name));
-                match first_anchor.get(name.as_str()) {
-                    Some(anchor) => {
+                match (first_anchor.get(name.as_str()), scope) {
+                    // Defined in this document: link straight to it.
+                    (Some(anchor), _) => {
                         let _ = write!(
                             out,
                             "<a class=\"entangled-ref\" href=\"#{}\">{}</a>",
@@ -199,7 +223,19 @@ fn render_code_lines(block: &WeaveCodeBlock, first_anchor: &HashMap<&str, String
                             label
                         );
                     }
-                    None => {
+                    // Defined in another source file. Weave renders one
+                    // document at a time, so there is nothing to link to from
+                    // here -- but the reference is correct, and marking it
+                    // missing would be a lie.
+                    (None, RefScope::Project) => {
+                        let _ = write!(
+                            out,
+                            "<span class=\"entangled-ref-external\" \
+                             title=\"defined in another source document\">{}</span>",
+                            label
+                        );
+                    }
+                    (None, _) => {
                         let _ = write!(
                             out,
                             "<span class=\"entangled-ref-missing\">{}</span>",
@@ -272,7 +308,35 @@ fn lang_class(lang: &str) -> String {
     }
 }
 
+/// Builds a slug for `name` that no other name in the document has claimed.
+///
+/// The readable slug is preferred; when it is already taken (or is empty
+/// because the name held no alphanumerics), a short digest of the full name is
+/// appended. The digest is derived from the name alone, so the same name always
+/// produces the same anchor -- links stay stable across re-weaves.
+fn unique_slug(name: &str, claimed: &HashSet<String>) -> String {
+    let base = slug(name);
+    if base != "block" && !claimed.contains(&base) {
+        return base;
+    }
+
+    let digest = &hex::encode(Sha256::digest(name.as_bytes()))[..8];
+    let candidate = format!("{base}-{digest}");
+    if !claimed.contains(&candidate) {
+        return candidate;
+    }
+
+    // Two distinct names with the same SHA-256 prefix: fall back to counting.
+    (1..)
+        .map(|n| format!("{candidate}-{n}"))
+        .find(|c| !claimed.contains(c))
+        .expect("an unclaimed suffix always exists")
+}
+
 /// Converts a block name into a URL/id-safe slug.
+///
+/// Returns the bare prefix `block` for a name with no alphanumerics; callers
+/// disambiguate through [`unique_slug`].
 fn slug(name: &str) -> String {
     let mut s = String::with_capacity(name.len() + 10);
     s.push_str("block-");
@@ -351,7 +415,8 @@ figure.entangled-block > pre { border-radius: 0; }
 .entangled-eq { color: var(--muted); }
 a.entangled-ref { text-decoration: none; border-bottom: 1px dotted currentColor; }
 a.entangled-ref:hover { border-bottom-style: solid; }
-.entangled-ref-missing { color: var(--muted); }
+.entangled-ref-missing { color: var(--muted); text-decoration: underline dotted; }
+.entangled-ref-external { color: var(--muted); }
 .entangled-usedby {
   padding: 0.4rem 1rem; font-size: 0.78rem; color: var(--muted);
   border-top: 1px solid var(--border); background: var(--bg);
@@ -378,8 +443,10 @@ mod tests {
     use crate::weave::weave_document;
 
     fn weave(input: &str) -> WovenDocument {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         weave_document(input, None, &c).unwrap()
     }
 
@@ -489,8 +556,10 @@ pass
                 success: true,
             },
         );
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         let html = weave_document_with_outputs(input, None, &c, &outputs)
             .unwrap()
             .to_html(&HtmlOptions::default());
@@ -514,8 +583,10 @@ pass
                 success: false,
             },
         );
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         let html = weave_document_with_outputs(input, None, &c, &outputs)
             .unwrap()
             .to_html(&HtmlOptions::default());

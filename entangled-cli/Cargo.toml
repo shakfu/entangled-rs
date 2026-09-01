@@ -11,7 +11,7 @@ repository = "https://github.com/entangled/entangled-rs"
 entangled = { path = "../entangled", version = "0.2.0", features = ["clap"] }
 clap = { version = "4", features = ["derive"] }
 glob = "0.3"
-notify = "7"
+notify = "8"
 serde_json = "1"
 toml = "0.8"
 tracing = "0.1"

@@ -2,9 +2,10 @@
 
 use std::path::PathBuf;
 
+use pyo3::create_exception;
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{PyDict, PyList};
 
 use entangled::Style;
 use entangled::config::{self, AnnotationMethod, NamespaceDefault};
@@ -12,13 +13,34 @@ use entangled::interface::{self, Context, Document};
 use entangled::io::Transaction;
 use entangled::model::{CodeBlock, ReferenceMap, ReferenceName};
 
+create_exception!(
+    _core,
+    EntangledError,
+    PyRuntimeError,
+    "An error raised by the Entangled engine.\n\n\
+     Carries the same `exit_code` the native CLI would exit with, so a Python \
+     front end can report failures identically."
+);
+
 /// Convert entangled errors to Python exceptions.
+///
+/// The engine's structured exit code is attached to the exception, so the
+/// Python CLI can exit with the same status as the native one instead of
+/// collapsing every failure to 1.
 fn to_py_err(e: entangled::errors::EntangledError) -> PyErr {
-    PyRuntimeError::new_err(e.to_string())
+    let code = e.exit_code();
+    let err = EntangledError::new_err(e.to_string());
+    Python::attach(|py| {
+        let value = err.value(py);
+        // Best effort: an exception we cannot annotate is still the right
+        // exception, and the CLI falls back to a generic failure code.
+        let _ = value.setattr("exit_code", code);
+    });
+    err
 }
 
 /// Python wrapper for Config.
-#[pyclass(name = "Config")]
+#[pyclass(name = "Config", from_py_object)]
 #[derive(Clone)]
 pub struct PyConfig {
     inner: entangled::Config,
@@ -280,6 +302,14 @@ impl PyContext {
         self.inner.base_dir.display().to_string()
     }
 
+    /// The configured glob patterns for source documents.
+    ///
+    /// Watch mode derives its scope from these rather than from the files that
+    /// currently exist, so a source file created later is still picked up.
+    fn source_patterns(&self) -> Vec<String> {
+        self.inner.config.source_patterns.clone()
+    }
+
     /// Get source files matching the configuration patterns.
     fn source_files(&self) -> PyResult<Vec<String>> {
         let files = self.inner.source_files().map_err(to_py_err)?;
@@ -328,7 +358,7 @@ impl PyContext {
 }
 
 /// Python wrapper for CodeBlock.
-#[pyclass(name = "CodeBlock")]
+#[pyclass(name = "CodeBlock", from_py_object)]
 #[derive(Clone)]
 pub struct PyCodeBlock {
     inner: CodeBlock,
@@ -547,8 +577,10 @@ fn locate_source<'py>(
     target_file: &str,
     target_line: usize,
 ) -> PyResult<Option<Bound<'py, PyDict>>> {
-    let result = interface::locate_source(&ctx.inner, &PathBuf::from(target_file), target_line)
-        .map_err(to_py_err)?;
+    // Resolve against the project root, matching the Rust CLI: a caller
+    // passing the relative target it saw in `status` must get an answer.
+    let path = ctx.inner.resolve_path(&PathBuf::from(target_file));
+    let result = interface::locate_source(&ctx.inner, &path, target_line).map_err(to_py_err)?;
 
     match result {
         Some(loc) => {
@@ -592,6 +624,105 @@ fn tangle_ref(doc: &PyDocument, name: &str, annotate: bool) -> PyResult<String> 
     Ok(result)
 }
 
+/// Collect the project's status: which generated files exist and how each one
+/// compares with the sources.
+///
+/// Returns a dict with `source_files`, `targets` (each `{path, resolved_path,
+/// status}`) and `tracked_count`. The status strings are exactly those the
+/// native CLI reports: `up-to-date`, `needs-tangle`, `modified`, `missing`.
+#[pyfunction]
+fn collect_status<'py>(py: Python<'py>, ctx: &PyContext) -> PyResult<Bound<'py, PyDict>> {
+    let status = entangled::status::collect_status(&ctx.inner).map_err(to_py_err)?;
+
+    let targets = PyList::empty(py);
+    for target in &status.targets {
+        let item = PyDict::new(py);
+        item.set_item("path", target.path.display().to_string())?;
+        item.set_item("resolved_path", target.resolved_path.display().to_string())?;
+        item.set_item("status", target.status.as_str())?;
+        targets.append(item)?;
+    }
+
+    let dict = PyDict::new(py);
+    dict.set_item(
+        "source_files",
+        status
+            .source_files
+            .iter()
+            .map(|p| p.display().to_string())
+            .collect::<Vec<_>>(),
+    )?;
+    dict.set_item("targets", targets)?;
+    dict.set_item("tracked_count", status.tracked_count)?;
+    Ok(dict)
+}
+
+/// Validate the project, returning one dict per finding.
+///
+/// Each finding has `severity` (`"error"` or `"warning"`), `kind`, `message`,
+/// and optional `file`/`line`. Errors come first, as in the native CLI.
+#[pyfunction]
+fn check_documents<'py>(py: Python<'py>, ctx: &PyContext) -> PyResult<Bound<'py, PyList>> {
+    let findings = entangled::check::check_documents(&ctx.inner).map_err(to_py_err)?;
+
+    let out = PyList::empty(py);
+    for finding in findings {
+        let item = PyDict::new(py);
+        item.set_item(
+            "severity",
+            match finding.severity {
+                entangled::check::Severity::Error => "error",
+                entangled::check::Severity::Warning => "warning",
+            },
+        )?;
+        item.set_item("kind", finding.kind)?;
+        item.set_item("message", finding.message)?;
+        item.set_item("file", finding.file)?;
+        item.set_item("line", finding.line)?;
+        out.append(item)?;
+    }
+    Ok(out)
+}
+
+/// Render the project's reference graph.
+///
+/// `format` is one of `dot`, `mermaid` or `json`, as accepted by the native
+/// CLI's `--format`.
+#[pyfunction]
+#[pyo3(signature = (ctx, format="dot"))]
+fn graph_documents(ctx: &PyContext, format: &str) -> PyResult<String> {
+    let format: entangled::graph::GraphFormat = format.parse().map_err(PyValueError::new_err)?;
+    entangled::graph::graph_documents(&ctx.inner, format).map_err(to_py_err)
+}
+
+/// Run every runnable (`eval=`) block and return one dict per block.
+///
+/// Executing a block runs arbitrary code, so -- exactly as in the native CLI --
+/// it only ever happens on this explicit call, never during tangle or stitch.
+#[pyfunction]
+#[pyo3(signature = (ctx, force=false, dry_run=false))]
+fn eval_documents<'py>(
+    py: Python<'py>,
+    ctx: &PyContext,
+    force: bool,
+    dry_run: bool,
+) -> PyResult<Bound<'py, PyList>> {
+    let options = entangled::eval::EvalOptions { force, dry_run };
+    let results = entangled::eval::eval_documents(&ctx.inner, &options).map_err(to_py_err)?;
+
+    let out = PyList::empty(py);
+    for result in results {
+        let item = PyDict::new(py);
+        item.set_item("block_id", result.block_id)?;
+        item.set_item("runner", result.runner)?;
+        item.set_item("stdout", result.stdout)?;
+        item.set_item("stderr", result.stderr)?;
+        item.set_item("exit_code", result.exit_code)?;
+        out.append(item)?;
+    }
+    Ok(out)
+}
+
 /// Python module definition.
 #[pymodule]
 mod _core {
@@ -633,4 +764,19 @@ mod _core {
 
     #[pymodule_export]
     use super::tangle_ref;
+
+    #[pymodule_export]
+    use super::collect_status;
+
+    #[pymodule_export]
+    use super::check_documents;
+
+    #[pymodule_export]
+    use super::graph_documents;
+
+    #[pymodule_export]
+    use super::eval_documents;
+
+    #[pymodule_export]
+    use super::EntangledError;
 }

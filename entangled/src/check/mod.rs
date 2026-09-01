@@ -109,7 +109,13 @@ pub fn check_refs(refs: &ReferenceMap) -> Vec<Finding> {
 
         for line in block.source.lines() {
             if let Some(caps) = REF_PATTERN.captures(line) {
-                let refname = caps["refname"].to_string();
+                // Resolve exactly as tangle does, so `check` agrees with what
+                // tangling would actually expand -- including a bare reference
+                // that resolves inside its own document's file namespace.
+                let refname = refs
+                    .resolve_reference(&block.id.name, &caps["refname"])
+                    .as_str()
+                    .to_string();
                 referenced.insert(refname.clone());
                 if defined.contains(&refname) {
                     adjacency
@@ -252,8 +258,10 @@ mod tests {
     use crate::readers::parse_markdown;
 
     fn refs_from(input: &str) -> ReferenceMap {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         parse_markdown(input, None, &c).unwrap().refs
     }
 
@@ -315,8 +323,8 @@ mod tests {
         assert!(!has_errors(
             &findings
                 .iter()
-                .cloned()
                 .filter(|f| f.kind == "orphan-block")
+                .cloned()
                 .collect::<Vec<_>>()
         ));
     }

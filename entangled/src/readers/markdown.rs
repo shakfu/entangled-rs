@@ -108,10 +108,8 @@ fn process_code_block(
     // Determine the reference name - prioritize explicit ID over file target
     let name = if let Some(id) = id_str {
         // Apply namespace if configured
-        let name = if let Some(ns_prefix) = source_path
-            .and_then(|p| p.file_name())
-            .and_then(|n| n.to_str())
-            .and_then(|n| config.namespace_default.prefix_for(n))
+        let name = if let Some(ns_prefix) =
+            source_path.and_then(|p| config.namespace_default.prefix_for(p))
         {
             format!("{}#{}", ns_prefix, id)
         } else {
@@ -372,8 +370,10 @@ def main():
     pass
 ```
 "#;
-        let mut config = Config::default();
-        config.namespace_default = NamespaceDefault::None;
+        let config = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
 
         let doc = parse_markdown(input, None, &config).unwrap();
 
@@ -408,10 +408,11 @@ mod style_tests {
     use crate::style::Style;
 
     fn config_with_style(style: Style) -> Config {
-        let mut config = Config::default();
-        config.namespace_default = NamespaceDefault::None;
-        config.style = style;
-        config
+        Config {
+            namespace_default: NamespaceDefault::None,
+            style,
+            ..Default::default()
+        }
     }
 
     // EntangledRs style tests
@@ -612,9 +613,11 @@ print('hello')
 native style
 ```
 "#;
-        let mut config = Config::default();
-        config.namespace_default = NamespaceDefault::None;
-        config.style = Style::EntangledRs;
+        let config = Config {
+            namespace_default: NamespaceDefault::None,
+            style: Style::EntangledRs,
+            ..Default::default()
+        };
         let path = Path::new("doc.md");
         let doc = parse_markdown(input, Some(path), &config).unwrap();
 
@@ -631,10 +634,13 @@ native style
 quarto style
 ```
 "#;
-        let mut config = Config::default();
-        config.namespace_default = NamespaceDefault::None;
-        config.style = Style::EntangledRs; // This is ignored for .qmd
-        config.strip_quarto_options = true;
+        let config = Config {
+            namespace_default: NamespaceDefault::None,
+            // Style is ignored for .qmd, which always parses as Quarto.
+            style: Style::EntangledRs,
+            strip_quarto_options: true,
+            ..Default::default()
+        };
         let path = Path::new("doc.qmd");
         let doc = parse_markdown(input, Some(path), &config).unwrap();
 
@@ -650,9 +656,12 @@ quarto style
 knitr style
 ```
 "#;
-        let mut config = Config::default();
-        config.namespace_default = NamespaceDefault::None;
-        config.style = Style::EntangledRs; // This is ignored for .Rmd
+        let config = Config {
+            namespace_default: NamespaceDefault::None,
+            // Style is ignored for .Rmd, which always parses as knitr.
+            style: Style::EntangledRs,
+            ..Default::default()
+        };
         let path = Path::new("doc.Rmd");
         let doc = parse_markdown(input, Some(path), &config).unwrap();
 

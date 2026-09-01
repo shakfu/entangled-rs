@@ -1,10 +1,11 @@
 //! Status command implementation.
-
-use std::path::PathBuf;
+//!
+//! The status *computation* lives in `entangled::status` so that the Python CLI
+//! reports identical values; this module only renders it.
 
 use entangled::errors::Result;
-use entangled::interface::{Context, Document};
-use entangled::io::FileData;
+use entangled::interface::Context;
+use entangled::status::{collect_status, FileStatus, ProjectStatus};
 
 /// Options for the status command.
 #[derive(Debug, Clone, Default)]
@@ -13,37 +14,6 @@ pub struct StatusOptions {
     pub verbose: bool,
     /// Output machine-readable JSON.
     pub json: bool,
-}
-
-/// File status information.
-#[derive(Debug)]
-pub enum FileStatus {
-    /// File is up to date.
-    UpToDate,
-    /// File needs to be tangled (new or modified source).
-    NeedsTangle,
-    /// File has been modified externally.
-    ExternallyModified,
-    /// File is missing.
-    Missing,
-}
-
-impl FileStatus {
-    fn as_str(&self) -> &'static str {
-        match self {
-            Self::UpToDate => "up-to-date",
-            Self::NeedsTangle => "needs-tangle",
-            Self::ExternallyModified => "modified",
-            Self::Missing => "missing",
-        }
-    }
-}
-
-/// Collected status data for JSON output.
-struct StatusData {
-    source_files: Vec<PathBuf>,
-    targets: Vec<(PathBuf, FileStatus)>,
-    tracked_count: usize,
 }
 
 /// Executes the status command.
@@ -59,30 +29,7 @@ pub fn status(ctx: &Context, options: StatusOptions) -> Result<()> {
     Ok(())
 }
 
-fn collect_status(ctx: &Context) -> Result<StatusData> {
-    let source_files = ctx.source_files()?;
-
-    let mut target_paths = Vec::new();
-    for path in &source_files {
-        let doc = Document::load(path, ctx)?;
-        target_paths.extend(doc.targets());
-    }
-
-    let mut targets = Vec::new();
-    for target in target_paths {
-        let full_path = ctx.resolve_path(&target);
-        let status = get_file_status(&full_path, &ctx.filedb)?;
-        targets.push((target, status));
-    }
-
-    Ok(StatusData {
-        source_files,
-        targets,
-        tracked_count: ctx.filedb.len(),
-    })
-}
-
-fn print_human(data: &StatusData, verbose: bool) {
+fn print_human(data: &ProjectStatus, verbose: bool) {
     println!("Source files: {}", data.source_files.len());
 
     if verbose {
@@ -93,49 +40,40 @@ fn print_human(data: &StatusData, verbose: bool) {
 
     println!("\nTarget files: {}", data.targets.len());
 
-    let mut up_to_date = 0;
-    let mut needs_tangle = 0;
-    let mut modified = 0;
-    let mut missing = 0;
-
-    for (target, status) in &data.targets {
-        match status {
-            FileStatus::UpToDate => up_to_date += 1,
-            FileStatus::NeedsTangle => needs_tangle += 1,
-            FileStatus::ExternallyModified => modified += 1,
-            FileStatus::Missing => missing += 1,
-        }
-
-        if verbose {
-            println!("  {} ({})", target.display(), status.as_str());
+    if verbose {
+        for target in &data.targets {
+            println!("  {} ({})", target.path.display(), target.status);
         }
     }
 
     println!("\nStatus summary:");
-    println!("  Up to date: {}", up_to_date);
-    println!("  Needs tangle: {}", needs_tangle);
-    println!("  Externally modified: {}", modified);
-    println!("  Missing: {}", missing);
+    println!("  Up to date: {}", data.count(FileStatus::UpToDate));
+    println!("  Needs tangle: {}", data.count(FileStatus::NeedsTangle));
+    println!(
+        "  Externally modified: {}",
+        data.count(FileStatus::ExternallyModified)
+    );
+    println!("  Missing: {}", data.count(FileStatus::Missing));
 
     println!("\nTracked files in database: {}", data.tracked_count);
 }
 
-fn print_json(data: &StatusData) {
-    let source_files: Vec<&str> = data
-        .source_files
-        .iter()
-        .filter_map(|p| p.to_str())
-        .collect();
-
+fn print_json(data: &ProjectStatus) {
     let targets: Vec<serde_json::Value> = data
         .targets
         .iter()
-        .map(|(path, status)| {
+        .map(|target| {
             serde_json::json!({
-                "path": path.to_string_lossy(),
-                "status": status.as_str(),
+                "path": target.path.to_string_lossy(),
+                "status": target.status.as_str(),
             })
         })
+        .collect();
+
+    let source_files: Vec<String> = data
+        .source_files
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
         .collect();
 
     let output = serde_json::json!({
@@ -145,29 +83,6 @@ fn print_json(data: &StatusData) {
     });
 
     println!("{}", serde_json::to_string_pretty(&output).unwrap());
-}
-
-/// Gets the status of a target file.
-fn get_file_status(path: &std::path::Path, filedb: &entangled::io::FileDB) -> Result<FileStatus> {
-    if !path.exists() {
-        if filedb.is_tracked(path) {
-            return Ok(FileStatus::Missing);
-        } else {
-            return Ok(FileStatus::NeedsTangle);
-        }
-    }
-
-    let current = FileData::from_path(path)?;
-
-    if let Some(recorded) = filedb.get(path) {
-        if recorded.hexdigest == current.hexdigest {
-            Ok(FileStatus::UpToDate)
-        } else {
-            Ok(FileStatus::ExternallyModified)
-        }
-    } else {
-        Ok(FileStatus::NeedsTangle)
-    }
 }
 
 #[cfg(test)]

@@ -28,9 +28,16 @@ pub trait Hook: Send + Sync {
 /// Result of pre-tangle hook processing.
 #[derive(Debug, Clone)]
 pub struct PreTangleResult {
-    /// Modified source content.
+    /// Modified source content, with anything hoisted into `header` removed.
     pub source: String,
-    /// Metadata extracted by the hook.
+    /// Lines to be emitted at the very top of the generated file, above the
+    /// annotations (a shebang, an SPDX identifier, ...).
+    ///
+    /// The orchestrator emits these exactly once per target. A hook must
+    /// therefore *remove* them from `source`; leaving them in both places is
+    /// what produces duplicated shebangs.
+    pub header: Vec<String>,
+    /// Other metadata extracted by the hook.
     pub metadata: Vec<(String, String)>,
 }
 
@@ -82,15 +89,39 @@ impl HookRegistry {
         self.hooks.is_empty()
     }
 
-    /// Runs all pre-tangle hooks on a block.
-    pub fn run_pre_tangle(&self, block: &CodeBlock) -> Result<Vec<PreTangleResult>> {
-        let mut results = Vec::new();
+    /// Runs all pre-tangle hooks on a block, chaining their source edits.
+    ///
+    /// Each hook sees the source as left by the previous one, so hooks compose:
+    /// with `shebang` registered before `spdx_license`, an SPDX line sitting
+    /// under a shebang is still recognised once the shebang has been lifted
+    /// out. Headers are concatenated in hook order, which is also the order
+    /// they appear in the generated file.
+    ///
+    /// Returns `None` when no hook changed anything.
+    pub fn run_pre_tangle(&self, block: &CodeBlock) -> Result<Option<PreTangleResult>> {
+        let mut current = block.clone();
+        let mut header = Vec::new();
+        let mut metadata = Vec::new();
+        let mut changed = false;
+
         for hook in &self.hooks {
-            if let Some(result) = hook.pre_tangle(block)? {
-                results.push(result);
+            if let Some(result) = hook.pre_tangle(&current)? {
+                current.source = result.source;
+                header.extend(result.header);
+                metadata.extend(result.metadata);
+                changed = true;
             }
         }
-        Ok(results)
+
+        if !changed {
+            return Ok(None);
+        }
+
+        Ok(Some(PreTangleResult {
+            source: current.source,
+            header,
+            metadata,
+        }))
     }
 
     /// Runs all post-tangle hooks on content.

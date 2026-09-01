@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use entangled::errors::{EntangledError, Result};
 use entangled::eval::{eval_cache_path, EvalCache};
 use entangled::interface::Context;
-use entangled::{weave_document_with_outputs, BlockOutput, HtmlOptions};
+use entangled::{weave_document_with_context, BlockOutput, HtmlOptions, WeaveContext};
 
 /// Selected weave backend / output family.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,8 +83,27 @@ pub fn weave(ctx: &Context, options: WeaveOptions) -> Result<()> {
 
     let outputs = load_eval_outputs(ctx);
 
+    // Every block name defined anywhere in the project. Weave still renders one
+    // document per output file, but with this it can tell a reference to
+    // another document apart from a dangling one instead of marking both
+    // "missing".
+    let analysis = entangled::interface::analyze_project(ctx)?;
+    let project_names: Vec<String> = analysis
+        .refs
+        .names()
+        .map(|n| n.as_str().to_string())
+        .collect();
+
     for input in &inputs {
-        weave_one(ctx, input, &backend, &options, to_stdout, &outputs)?;
+        weave_one(
+            ctx,
+            input,
+            &backend,
+            &options,
+            to_stdout,
+            &outputs,
+            &project_names,
+        )?;
     }
 
     Ok(())
@@ -159,10 +178,21 @@ fn weave_one(
     options: &WeaveOptions,
     to_stdout: bool,
     outputs: &HashMap<String, BlockOutput>,
+    project_names: &[String],
 ) -> Result<()> {
     let resolved_input = ctx.resolve_path(input);
     let content = std::fs::read_to_string(&resolved_input)?;
-    let doc = weave_document_with_outputs(&content, Some(input), &ctx.config, outputs)?;
+    // Parse under the project-relative path, so the file namespace weave shows
+    // is the one tangle actually used.
+    let relative = resolved_input
+        .strip_prefix(&ctx.base_dir)
+        .unwrap_or(input)
+        .to_path_buf();
+    let weave_ctx = WeaveContext {
+        outputs: outputs.clone(),
+        project_names: project_names.iter().map(String::as_str).collect(),
+    };
+    let doc = weave_document_with_context(&content, Some(&relative), &ctx.config, &weave_ctx)?;
 
     let out_path =
         |ext: &str| output_path(&resolved_input, options, ext).map(|p| ctx.resolve_path(&p));
@@ -339,7 +369,59 @@ mod tests {
         assert!(html_path.exists());
         let html = fs::read_to_string(html_path).unwrap();
         assert!(html.contains("<!DOCTYPE html>"));
-        assert!(html.contains("href=\"#block-body\""));
+        // The default file namespace makes the block `doc.md#body`, which is
+        // the name tangle resolves too -- weave must show and link the same
+        // name, not the bare `body` it used to.
+        assert!(html.contains("id=\"block-doc-md-body\""), "{html}");
+        assert!(html.contains("href=\"#block-doc-md-body\""), "{html}");
+        // ...and it is a resolved link, not a "missing reference".
+        assert!(
+            !html.contains("<span class=\"entangled-ref-missing\""),
+            "{html}"
+        );
+    }
+
+    #[test]
+    fn weave_marks_a_reference_from_another_document_as_external() {
+        let dir = tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "```python #main file=main.py
+<<b.md#helper>>
+```
+",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("b.md"),
+            "```python #helper
+pass
+```
+",
+        )
+        .unwrap();
+        let ctx = ctx_with(dir.path());
+
+        weave(
+            &ctx,
+            WeaveOptions {
+                quiet: true,
+                files: vec![PathBuf::from("a.md")],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let html = fs::read_to_string(dir.path().join("a.html")).unwrap();
+        // Defined in b.md: not linkable from this page, but not missing either.
+        assert!(
+            html.contains("<span class=\"entangled-ref-external\""),
+            "{html}"
+        );
+        assert!(
+            !html.contains("<span class=\"entangled-ref-missing\""),
+            "{html}"
+        );
     }
 
     #[test]

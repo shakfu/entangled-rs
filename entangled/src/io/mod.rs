@@ -8,4 +8,5 @@ mod transaction;
 pub use file_cache::{FileCache, RealFileCache, VirtualFS};
 pub use filedb::FileDB;
 pub use stat::{hexdigest_file, hexdigest_str, FileData, Stat};
+pub(crate) use transaction::atomic_write;
 pub use transaction::{Action, Create, Delete, Transaction, WriteAction};

@@ -50,6 +50,15 @@ impl ReferenceName {
         parts.last().copied().unwrap_or(&self.0)
     }
 
+    /// Returns the file-namespace prefix, if this name carries one.
+    ///
+    /// The default `namespace_default = "file"` names blocks
+    /// `<source path>#<id>`, e.g. `chapter/a.md#part`; the prefix here is
+    /// `chapter/a.md`.
+    pub fn namespace(&self) -> Option<&str> {
+        self.0.rsplit_once('#').map(|(ns, _)| ns)
+    }
+
     /// Creates a file target reference name from a path.
     pub fn from_file_path(path: &str) -> Self {
         Self(format!("file:{}", path))

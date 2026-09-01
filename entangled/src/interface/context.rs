@@ -34,12 +34,29 @@ impl Context {
             Ok(db) => db,
             Err(e) => {
                 if filedb_path.exists() {
-                    // File exists but failed to parse -- warn about data loss
-                    tracing::warn!(
-                        "Failed to load file database at {}: {}. Starting with empty database.",
-                        filedb_path.display(),
-                        e
-                    );
+                    // An unparsable database means conflict detection is about
+                    // to be lost, so the file is quarantined rather than
+                    // overwritten: it is the only record of which generated
+                    // files Entangled owns, and keeping it lets the user (or a
+                    // bug report) see what went wrong.
+                    let quarantine = filedb_path.with_extension("json.corrupt");
+                    match std::fs::rename(&filedb_path, &quarantine) {
+                        Ok(()) => tracing::warn!(
+                            "File database at {} could not be parsed ({}); moved it to {} and \
+                             started an empty one. Conflict detection cannot protect existing \
+                             generated files until the next successful write.",
+                            filedb_path.display(),
+                            e,
+                            quarantine.display(),
+                        ),
+                        Err(rename_error) => tracing::warn!(
+                            "File database at {} could not be parsed ({}) and could not be moved \
+                             aside ({}); starting with an empty database.",
+                            filedb_path.display(),
+                            e,
+                            rename_error,
+                        ),
+                    }
                 }
                 FileDB::default()
             }
@@ -155,6 +172,11 @@ impl Context {
     }
 
     /// Resolves a path relative to the base directory.
+    ///
+    /// This is the plain resolver for paths Entangled *reads* (source
+    /// documents, woven output chosen by the user). Paths Entangled
+    /// *generates* must go through [`resolve_target`](Self::resolve_target),
+    /// which additionally applies `output_dir` and the containment policy.
     pub fn resolve_path(&self, path: &std::path::Path) -> PathBuf {
         if path.is_absolute() {
             path.to_path_buf()
@@ -162,6 +184,79 @@ impl Context {
             self.base_dir.join(path)
         }
     }
+
+    /// Resolves a generated file's `file=` target to an absolute path.
+    ///
+    /// This is the single place target semantics live, so tangle, stitch,
+    /// status, locate and reset can never disagree about where a target lives:
+    ///
+    /// 1. A relative target is prefixed with `output_dir` when one is
+    ///    configured (`output_dir` itself is relative to the project root).
+    ///    Absolute targets are left alone -- they already name a location.
+    /// 2. The result is resolved against `base_dir` and normalised lexically
+    ///    (without touching the filesystem, since the file may not exist yet).
+    /// 3. Unless `allow_external_targets` is set, the result must stay inside
+    ///    the project directory. A document is untrusted input; without this
+    ///    check a `file=../../.ssh/authorized_keys` block would happily
+    ///    overwrite anything the user can write.
+    pub fn resolve_target(&self, path: &std::path::Path) -> crate::errors::Result<PathBuf> {
+        let with_output_dir = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            match self.config.output_dir() {
+                Some(dir) => dir.join(path),
+                None => path.to_path_buf(),
+            }
+        };
+
+        let resolved = normalize_lexical(&self.resolve_path(&with_output_dir));
+
+        if !self.config.allow_external_targets {
+            let root = normalize_lexical(&self.base_dir);
+            if !resolved.starts_with(&root) {
+                return Err(crate::errors::EntangledError::Config(format!(
+                    "target `{}` resolves to `{}`, which is outside the project directory `{}`; set `allow_external_targets = true` to permit this",
+                    path.display(),
+                    resolved.display(),
+                    root.display()
+                )));
+            }
+        }
+
+        Ok(resolved)
+    }
+}
+
+/// Normalises `.` and `..` components without consulting the filesystem.
+///
+/// [`std::fs::canonicalize`] cannot be used here: generated targets routinely
+/// do not exist yet, and canonicalising would also resolve symlinks, which
+/// would make the containment check depend on link layout rather than on the
+/// path the document actually asked for.
+fn normalize_lexical(path: &std::path::Path) -> PathBuf {
+    use std::path::Component;
+
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                // Only pop a real directory name; `/..` and a leading `..` in a
+                // relative path have nothing to pop and must be preserved.
+                if out
+                    .components()
+                    .next_back()
+                    .is_some_and(|c| matches!(c, Component::Normal(_)))
+                {
+                    out.pop();
+                } else {
+                    out.push(component.as_os_str());
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

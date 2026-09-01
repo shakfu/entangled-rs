@@ -49,6 +49,37 @@ fn relevant_extensions(ctx: &Context) -> HashSet<String> {
     exts
 }
 
+/// Collects the absolute paths of every file the project currently generates,
+/// plus the state directory.
+///
+/// Best effort: a project that cannot be analysed right now (a mid-edit
+/// document) simply gets no filtering until the next successful sync.
+fn generated_targets(ctx: &Context) -> HashSet<PathBuf> {
+    let mut generated = HashSet::new();
+
+    if let Some(parent) = ctx.filedb_path.parent() {
+        generated.insert(parent.to_path_buf());
+    }
+    generated.insert(ctx.filedb_path.clone());
+
+    if let Ok(analysis) = entangled::interface::analyze_project(ctx) {
+        for target in analysis.refs.targets() {
+            if let Ok(resolved) = ctx.resolve_target(target) {
+                generated.insert(resolved);
+            }
+        }
+    }
+
+    generated
+}
+
+/// Checks whether a path is (or lives under) something Entangled generates.
+fn is_generated(path: &Path, generated: &HashSet<PathBuf>) -> bool {
+    generated
+        .iter()
+        .any(|g| path == g.as_path() || path.starts_with(g))
+}
+
 /// Checks whether a path matches any of the exclude patterns.
 fn is_excluded(path: &Path, base_dir: &Path, exclude_patterns: &[String]) -> bool {
     let relative = path.strip_prefix(base_dir).unwrap_or(path);
@@ -73,6 +104,11 @@ pub fn watch(ctx: &mut Context, options: WatchOptions) -> Result<()> {
 
     let exts = relevant_extensions(ctx);
     let exclude_patterns = ctx.config.watch.exclude.clone();
+
+    // Entangled's own writes must not feed the watcher: tangling a document
+    // produces events for every generated file, each of which would trigger
+    // another sync. Collect the current targets and ignore events for them.
+    let generated = generated_targets(ctx);
     let base_dir = ctx.base_dir.clone();
     tracing::debug!("Watching for extensions: {:?}", exts);
     if !exclude_patterns.is_empty() {
@@ -82,9 +118,16 @@ pub fn watch(ctx: &mut Context, options: WatchOptions) -> Result<()> {
     println!("Watching for changes (debounce: {}ms)...", debounce);
     println!("Press Ctrl+C to stop.");
 
-    // Initial sync
-    if let Err(e) = sync_documents(ctx, false) {
-        eprintln!("Initial sync error: {}", e);
+    // Initial sync. The watcher deliberately keeps running on failure -- the
+    // usual cause is a document the user is mid-edit, which the next change
+    // fixes -- but the state is reported explicitly rather than left looking
+    // like a clean start.
+    match sync_documents(ctx, false) {
+        Ok(()) => {}
+        Err(e) => {
+            eprintln!("Initial sync failed: {}", e);
+            eprintln!("Watching anyway; the next change will retry.");
+        }
     }
 
     let (tx, rx) = channel();
@@ -128,7 +171,9 @@ pub fn watch(ctx: &mut Context, options: WatchOptions) -> Result<()> {
                         .and_then(OsStr::to_str)
                         .map(|e| exts.contains(e))
                         .unwrap_or(false);
-                    ext_ok && !is_excluded(p, &base_dir, &exclude_patterns)
+                    ext_ok
+                        && !is_excluded(p, &base_dir, &exclude_patterns)
+                        && !is_generated(p, &generated)
                 });
 
                 if relevant {

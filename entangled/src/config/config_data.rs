@@ -23,8 +23,20 @@ pub struct Config {
     pub source_patterns: Vec<String>,
 
     /// Directory for generated/tangled files.
+    ///
+    /// Relative `file=` targets are emitted beneath this directory, which is
+    /// itself resolved relative to the project root. Absolute targets are
+    /// unaffected.
     #[serde(default)]
     pub output_dir: Option<PathBuf>,
+
+    /// Allow generated files to be written outside the project directory.
+    ///
+    /// Off by default: `file=` targets come from documents, which are untrusted
+    /// input, so absolute paths and `..` traversal are rejected unless a project
+    /// explicitly opts in.
+    #[serde(default)]
+    pub allow_external_targets: bool,
 
     /// How to annotate tangled output.
     #[serde(default)]
@@ -97,6 +109,7 @@ impl Default for Config {
             version: default_version(),
             source_patterns: default_source_patterns(),
             output_dir: None,
+            allow_external_targets: false,
             annotation: AnnotationMethod::default(),
             namespace_default: NamespaceDefault::default(),
             markers: Markers::default(),
@@ -176,11 +189,32 @@ fn default_debounce() -> u64 {
 /// reference-expanded source is piped to the command on standard input. These
 /// entries override and extend the built-in runners (e.g. `python`, `sh`,
 /// `node`), so a config only needs to list runners it wants to add or change.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EvalConfig {
     /// Runner name -> command argv (program plus arguments).
     #[serde(default)]
     pub runners: HashMap<String, Vec<String>>,
+
+    /// Wall-clock limit for a single block, in seconds.
+    ///
+    /// A block that has not exited by then is killed and recorded as failed, so
+    /// one non-terminating block cannot hang the whole run. `0` disables the
+    /// limit.
+    #[serde(default = "default_eval_timeout")]
+    pub timeout_secs: u64,
+}
+
+fn default_eval_timeout() -> u64 {
+    60
+}
+
+impl Default for EvalConfig {
+    fn default() -> Self {
+        Self {
+            runners: HashMap::new(),
+            timeout_secs: default_eval_timeout(),
+        }
+    }
 }
 
 /// Hook configuration.

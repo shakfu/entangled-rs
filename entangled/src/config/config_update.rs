@@ -81,6 +81,7 @@ impl ConfigUpdate {
                 .source_patterns
                 .unwrap_or_else(|| base.source_patterns.clone()),
             output_dir: self.output_dir.or_else(|| base.output_dir.clone()),
+            allow_external_targets: base.allow_external_targets,
             annotation: self.annotation.unwrap_or(base.annotation),
             namespace_default: self.namespace_default.unwrap_or(base.namespace_default),
             markers: self.markers.unwrap_or_else(|| base.markers.clone()),

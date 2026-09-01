@@ -168,8 +168,10 @@ mod tests {
     use crate::readers::parse_markdown;
 
     fn refs_from(input: &str) -> ReferenceMap {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         parse_markdown(input, None, &c).unwrap().refs
     }
 

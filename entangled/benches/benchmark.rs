@@ -75,8 +75,10 @@ fn generate_nested_markdown(depth: usize, breadth: usize) -> String {
 fn bench_parse_markdown(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse_markdown");
 
-    let mut config = Config::default();
-    config.namespace_default = NamespaceDefault::None;
+    let config = Config {
+        namespace_default: NamespaceDefault::None,
+        ..Default::default()
+    };
 
     for num_blocks in [10, 50, 100, 500].iter() {
         let md = generate_markdown(*num_blocks, 10);
@@ -91,8 +93,10 @@ fn bench_parse_markdown(c: &mut Criterion) {
 fn bench_tangle(c: &mut Criterion) {
     let mut group = c.benchmark_group("tangle");
 
-    let mut config = Config::default();
-    config.namespace_default = NamespaceDefault::None;
+    let config = Config {
+        namespace_default: NamespaceDefault::None,
+        ..Default::default()
+    };
 
     for num_blocks in [10, 50, 100, 500].iter() {
         let md = generate_markdown(*num_blocks, 10);
@@ -115,8 +119,10 @@ fn bench_tangle(c: &mut Criterion) {
 fn bench_tangle_nested(c: &mut Criterion) {
     let mut group = c.benchmark_group("tangle_nested");
 
-    let mut config = Config::default();
-    config.namespace_default = NamespaceDefault::None;
+    let config = Config {
+        namespace_default: NamespaceDefault::None,
+        ..Default::default()
+    };
 
     // Test different nesting depths with breadth=3
     for depth in [2, 3, 4, 5].iter() {

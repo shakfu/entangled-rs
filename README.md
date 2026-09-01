@@ -73,7 +73,7 @@ cargo install --path entangled-cli
 pip install pyentangled
 ```
 
-The Python CLI mirrors the Rust CLI:
+The Python CLI covers every Rust command except `weave`:
 
 ```bash
 pyentangled init
@@ -82,8 +82,14 @@ pyentangled stitch --diff
 pyentangled sync --dry-run
 pyentangled locate output.py:10
 pyentangled status --json
+pyentangled check
+pyentangled graph --format mermaid
+pyentangled eval
 pyentangled config
 ```
+
+`weave` is Rust-CLI-only: its Pandoc integration and output-path handling live
+in the native CLI. Use `entangled weave` for rendering.
 
 See [Python Bindings API](#python-bindings-api) for library usage.
 
@@ -564,7 +570,18 @@ Note: `.qmd` and `.Rmd` files always use their native styles regardless of confi
 
 ### Output Directory
 
-When `output_dir` is set, all tangled file paths are prefixed with the specified directory. For example, with `output_dir = "src"`, a code block with `file=main.py` would be written to `src/main.py`.
+When `output_dir` is set, all *relative* tangled file paths are prefixed with the specified directory, which is itself resolved relative to the project root. For example, with `output_dir = "src"`, a code block with `file=main.py` is written to `src/main.py`. Absolute targets are unaffected.
+
+The same resolution is used by `tangle`, `stitch`, `status` and the file database, so a project can turn `output_dir` on without any command losing track of its files.
+
+### Generated File Safety
+
+`file=` targets come from documents, which Entangled treats as untrusted input. By default a target that resolves outside the project directory -- through `..` or an absolute path -- is rejected before anything is written:
+
+```toml
+# Opt in when a project deliberately generates files outside its own tree.
+allow_external_targets = true
+```
 
 ### Namespace Default
 
@@ -579,10 +596,12 @@ Hooks process code blocks during tangling. Enable them in the `[hooks]` config s
 
 | Hook | Config Key | Description |
 |------|-----------|-------------|
-| Shebang | `hooks.shebang = true` | Strips `#!/...` lines from markdown code blocks and re-inserts them at the top of the tangled output file |
-| SPDX License | `hooks.spdx_license = true` | Strips `// SPDX-License-Identifier: ...` headers from markdown and re-inserts them at the top of tangled output |
+| Shebang | `hooks.shebang = true` | Strips a `#!/...` line from a target's first code block and re-inserts it, once, at the top of the tangled output file |
+| SPDX License | `hooks.spdx_license = true` | Strips `SPDX-License-Identifier: ...` header lines from a target's first code block and re-inserts them, once, at the top of tangled output |
 
 Hooks are useful when you want the shebang or license header to appear in the final file but not clutter every code block in the documentation.
+
+Headers are lifted out *before* reference expansion and emitted exactly once, above the annotation markers, in the order the hooks are listed above. Both hooks compose, so an SPDX line beneath a shebang is still recognised. Stitching puts the header back into the markdown block it came from, so the round trip is lossless.
 
 ## Annotation Format
 
@@ -613,7 +632,7 @@ This project is organized as a Cargo workspace:
 |-------|------|---------|-------------|
 | `entangled` | Library | 2021 | Core library with no CLI dependencies |
 | `entangled-cli` | Binary | 2021 | Command-line interface |
-| `pyentangled` | Python | 2024 | Python bindings and CLI with full command parity (PyO3/maturin) |
+| `pyentangled` | Python | 2024 | Python bindings and CLI covering every Rust command except `weave` (PyO3/maturin) |
 
 ### Rust Version Requirements
 

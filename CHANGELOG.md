@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Tangling no longer discards code on a target collision.** Two differently
+  named blocks writing one `file=` target silently kept only the last one.
+  `tangle` and `sync` now refuse the whole operation, naming every collided
+  target, before any file is written. Continuation blocks (several blocks
+  sharing one *name*) are unaffected.
+- **Block identity is now project-wide.** Per-document IDs restarted at zero in
+  every file, so a `#part` block in `a.md` and in `b.md` were both `part[0]`:
+  one replaced the other and the survivor was expanded twice. The default file
+  namespace also keyed on the file name alone, so `chapter/a.md` and
+  `other/a.md` collided; it now uses the whole project-relative path.
+- **A bare `<<reference>>` resolves inside its own document's namespace**, so
+  the default `namespace_default = "file"` is usable at all. Reference syntax
+  also accepts `#`, so `<<other/a.md#part>>` can be written.
+- **Header hooks emit exactly once.** `shebang` and `spdx_license` re-added
+  their header without removing it, producing duplicate shebangs, and the
+  pre-tangle half was never called. Headers are now lifted out before reference
+  expansion and emitted once above the annotations; the hooks compose, and the
+  header survives a stitch round trip.
+- **Evaluated blocks run in the project directory** rather than inheriting the
+  caller's, so `-C` and library use behave like running in the project.
+- **Evaluation no longer deadlocks or hangs.** stdin is written while output is
+  drained (a child filling its 64 KiB stdout pipe used to block the parent
+  forever), and a new `[eval] timeout_secs` (default 60) bounds each block.
+- **The evaluation cache is keyed on the resolved command line**, not the
+  runner's name, so changing `[eval.runners]` invalidates stale results.
+- **`output_dir` is implemented.** It was parsed and documented but never
+  applied. One resolver now serves tangle, stitch, status and the file database.
+- **Generated files cannot escape the project.** `file=` targets that resolve
+  outside the project directory (via `..` or an absolute path) are rejected;
+  set `allow_external_targets = true` to opt in.
+- **Transactions are genuinely all-or-nothing.** Actions were applied
+  sequentially, so a failure part-way through left the filesystem and the file
+  database inconsistent. Everything is now staged and backed up before any
+  commit, a failed commit rolls back, and the database advances only on success.
+- **CRLF documents survive weave and stitch.** A byte-offset bug in YAML
+  frontmatter splitting emitted a stray `-` line and shifted every code block's
+  line number; stitch also rewrote CRLF files as LF.
+- **HTML anchors are unique.** Names that normalise to the same slug (`a.b` and
+  `a-b`), or to nothing at all, shared one HTML id.
+- **Weave uses the same names as tangle** (namespace included) and marks a
+  reference defined in another source document as external rather than missing.
+- **State files are written atomically**, so overlapping processes cannot
+  truncate `filedb.json` or the evaluation cache; an unparsable database is
+  quarantined rather than silently replaced with an empty one.
+- **Watch mode** notices deleted source files and source types created after it
+  started (Python), ignores events for its own generated output (Rust), and
+  reports an initial-sync failure explicitly instead of looking like a clean
+  start.
+- **Python parity.** The CLI gains `check`, `graph` and `eval`; `status` uses
+  the shared Rust computation (same values and JSON schema) and no longer
+  swallows document errors; `__version__` is derived from package metadata
+  instead of being hard-coded (it read `0.1.0` at version `0.2.0`); and
+  `locate_source` resolves relative paths through `Context`; and engine errors
+  now raise `pyentangled.EntangledError` carrying the same `exit_code` the
+  native CLI exits with, instead of every failure collapsing to 1.
+
+### Security
+
+- Updated `bytes` (RUSTSEC-2026-0007), `crossbeam-epoch` (RUSTSEC-2026-0204)
+  and PyO3 to 0.29 (RUSTSEC-2026-0176, RUSTSEC-2026-0177). `cargo audit` now
+  runs in CI, with the accepted unmaintained transitive crates documented in
+  `.cargo/audit.toml`.
+
+### Added
+
+- `[eval] timeout_secs` -- wall-clock limit per evaluated block (default 60,
+  `0` disables).
+- `allow_external_targets` -- opt in to generating files outside the project.
+- `entangled::status` -- the shared status computation behind both CLIs.
+- `entangled::interface::analyze_project` -- one validated, project-wide model
+  of every code block, used by tangle, stitch, locate, status and weave.
+
+### Changed
+
+- Clippy runs with `--all-targets` in CI, and the Python test job now covers
+  Windows and uses `uv`. It also builds the native CLI first, so the new
+  cross-CLI contract tests (command list, version, status JSON, exit codes) run
+  rather than skipping themselves.
+
 ## [0.2.0] - 2026-07-05
 
 ### Added
@@ -132,7 +213,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Config getters/setters: style, output_dir, hooks_shebang, hooks_spdx_license, filedb_path, strip_quarto_options, watch_debounce_ms
 - Transaction.diffs() method for unified diff output
 - locate_source() returns dict with source_file, source_line, block_id (or None for annotation lines)
-- Python CLI (`pyentangled`) with full command parity:
+- Python CLI (`pyentangled`):
   - Commands: init, tangle, stitch, sync, watch, status, locate, config, reset
   - Global flags: --style/-s, --quiet/-q, --verbose/-v
   - Per-command flags: --diff/-d, --dry-run/-n, --force/-f, --json (status)

@@ -59,7 +59,7 @@ fn render_block(out: &mut String, block: &WeaveCodeBlock) {
                 out.push_str(text);
                 out.push('\n');
             }
-            CodeLine::Reference { indent, name } => {
+            CodeLine::Reference { indent, name, .. } => {
                 let _ = writeln!(out, "{}<<{}>>", indent, name);
             }
         }
@@ -147,8 +147,10 @@ mod tests {
     use crate::weave::weave_document;
 
     fn md(input: &str) -> String {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         weave_document(input, None, &c).unwrap().to_markdown()
     }
 
@@ -210,8 +212,10 @@ mod tests {
                 success: true,
             },
         );
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         let out = weave_document_with_outputs(input, None, &c, &outputs)
             .unwrap()
             .to_markdown();

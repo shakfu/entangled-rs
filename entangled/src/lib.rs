@@ -32,6 +32,7 @@ pub mod interface;
 pub mod io;
 pub mod model;
 pub mod readers;
+pub mod status;
 pub mod style;
 pub mod text_location;
 pub mod weave;
@@ -49,6 +50,6 @@ pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
 pub use style::Style;
 pub use weave::{
-    weave_document, weave_document_with_outputs, weave_to_html, weave_to_markdown, BlockOutput,
-    HtmlOptions, WovenDocument,
+    weave_document, weave_document_with_context, weave_document_with_outputs, weave_to_html,
+    weave_to_markdown, BlockOutput, HtmlOptions, RefScope, WeaveContext, WovenDocument,
 };

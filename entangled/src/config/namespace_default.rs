@@ -1,5 +1,7 @@
 //! Namespace default configuration.
 
+use std::path::Path;
+
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// How to handle default namespace for code blocks without explicit naming.
@@ -34,10 +36,28 @@ impl<'de> Deserialize<'de> for NamespaceDefault {
 }
 
 impl NamespaceDefault {
-    /// Returns the namespace prefix for a given filename.
-    pub fn prefix_for(&self, filename: &str) -> Option<String> {
+    /// Returns the namespace prefix for a source document.
+    ///
+    /// The whole (project-relative) path is used, not just the file name:
+    /// `chapter/a.md` and `other/a.md` must not share a namespace, or their
+    /// same-named blocks would collide in the project-wide reference map.
+    /// Separators are normalised to `/` so the prefix is identical on every
+    /// platform.
+    pub fn prefix_for(&self, source_path: &Path) -> Option<String> {
         match self {
-            NamespaceDefault::File => Some(filename.to_string()),
+            NamespaceDefault::File => {
+                let mut parts = Vec::new();
+                for component in source_path.components() {
+                    if let std::path::Component::Normal(part) = component {
+                        parts.push(part.to_string_lossy().into_owned());
+                    }
+                }
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(parts.join("/"))
+                }
+            }
             NamespaceDefault::None => None,
         }
     }
@@ -55,13 +75,31 @@ mod tests {
     #[test]
     fn test_prefix_for_file() {
         let ns = NamespaceDefault::File;
-        assert_eq!(ns.prefix_for("test.md"), Some("test.md".to_string()));
+        assert_eq!(
+            ns.prefix_for(Path::new("test.md")),
+            Some("test.md".to_string())
+        );
+    }
+
+    #[test]
+    fn test_prefix_for_nested_path_keeps_directories() {
+        // Distinct directories must yield distinct namespaces, otherwise
+        // `chapter/a.md#part` and `other/a.md#part` would be the same block.
+        let ns = NamespaceDefault::File;
+        assert_eq!(
+            ns.prefix_for(Path::new("chapter/a.md")),
+            Some("chapter/a.md".to_string())
+        );
+        assert_ne!(
+            ns.prefix_for(Path::new("chapter/a.md")),
+            ns.prefix_for(Path::new("other/a.md"))
+        );
     }
 
     #[test]
     fn test_prefix_for_none() {
         let ns = NamespaceDefault::None;
-        assert_eq!(ns.prefix_for("test.md"), None);
+        assert_eq!(ns.prefix_for(Path::new("test.md")), None);
     }
 
     #[test]

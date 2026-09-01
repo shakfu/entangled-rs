@@ -91,7 +91,7 @@ impl Markers {
 
 /// Reference pattern for detecting noweb-style references like `<<refname>>`.
 pub static REF_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"^(?P<indent>\s*)<<(?P<refname>[\w:/_.-]+)>>\s*$").unwrap());
+    Lazy::new(|| Regex::new(r"^(?P<indent>\s*)<<(?P<refname>[\w:/#_.-]+)>>\s*$").unwrap());
 
 /// Annotation prefix pattern.
 pub static ANNOTATION_PREFIX: &str = "~/~";
@@ -164,6 +164,10 @@ mod tests {
         let caps2 = REF_PATTERN.captures("<<module::func>>").unwrap();
         assert_eq!(&caps2["indent"], "");
         assert_eq!(&caps2["refname"], "module::func");
+
+        // File namespaces put `#` in block names, so references must accept it.
+        let caps3 = REF_PATTERN.captures("<<chapter/a.md#part>>").unwrap();
+        assert_eq!(&caps3["refname"], "chapter/a.md#part");
 
         assert!(REF_PATTERN.captures("not a ref").is_none());
         assert!(REF_PATTERN.captures("<<>>").is_none());

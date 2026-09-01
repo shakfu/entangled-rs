@@ -205,7 +205,16 @@ impl Action for Delete {
     }
 }
 
-/// A collection of actions to execute atomically.
+/// A collection of actions applied as a unit.
+///
+/// [`execute`](Transaction::execute) is all-or-nothing: every file is staged
+/// and every replaced file is backed up before anything is committed, and a
+/// failure part-way through the commit rolls the already-committed files back.
+/// Callers therefore never have to reason about a half-tangled project, and the
+/// in-memory [`FileDB`] is only updated once the commit has fully succeeded.
+///
+/// The guarantee is *rollback*, not isolation: a concurrent process reading
+/// during a commit can observe an intermediate state.
 #[derive(Debug, Default)]
 pub struct Transaction {
     /// Actions to execute.
@@ -314,27 +323,202 @@ impl Transaction {
     }
 
     /// Executes all actions and updates the database.
+    ///
+    /// Either every action is applied or none is: see [`Transaction`].
     pub fn execute(&self, db: &mut FileDB) -> Result<()> {
         // First check all conflicts
         self.check_conflicts(db)?;
-
-        // Execute all actions
-        for action in &self.actions {
-            action.execute()?;
-            action.update_db(db)?;
-        }
-
-        Ok(())
+        self.apply(db)
     }
 
     /// Executes all actions, ignoring conflicts, and updates the database.
+    ///
+    /// Only the conflict check is skipped; the all-or-nothing guarantee of
+    /// [`execute`](Transaction::execute) still holds.
     pub fn execute_force(&self, db: &mut FileDB) -> Result<()> {
+        self.apply(db)
+    }
+
+    /// Stages every action, commits them, and rolls back on failure.
+    fn apply(&self, db: &mut FileDB) -> Result<()> {
+        // Phase 1 -- stage. Everything that can fail cheaply (creating parent
+        // directories, writing and fsyncing the new contents, copying the file
+        // being replaced aside) happens here, while nothing is committed yet.
+        let mut staged = Vec::with_capacity(self.actions.len());
         for action in &self.actions {
-            action.execute()?;
+            match Staged::prepare(action.as_ref()) {
+                Ok(entry) => staged.push(entry),
+                Err(e) => {
+                    // Nothing has been committed, so discarding the scratch
+                    // files is a complete undo.
+                    for entry in &staged {
+                        entry.discard();
+                    }
+                    return Err(e);
+                }
+            }
+        }
+
+        // Phase 2 -- commit. Each step is a single rename or unlink.
+        for index in 0..staged.len() {
+            if let Err(e) = staged[index].commit() {
+                let rollback = rollback(&staged[..index]);
+                for entry in &staged {
+                    entry.discard();
+                }
+                return Err(match rollback {
+                    Ok(()) => e,
+                    Err(rollback_error) => EntangledError::Other(format!(
+                        "{e}; and rolling back the {} already-written file(s) failed: \
+                         {rollback_error}. Some generated files may be inconsistent",
+                        index
+                    )),
+                });
+            }
+        }
+
+        for entry in &staged {
+            entry.discard();
+        }
+
+        // Phase 3 -- record. Only now is the database advanced, so a failed
+        // transaction never leaves it describing files that were not written.
+        for action in &self.actions {
             action.update_db(db)?;
+        }
+
+        Ok(())
+    }
+}
+
+/// One action prepared for commit, plus what is needed to undo it.
+struct Staged<'a> {
+    /// The action, used to commit anything that is not a content write.
+    action: &'a dyn Action,
+    /// The file this action replaces, creates or removes.
+    target: PathBuf,
+    /// The new contents, already written and fsynced beside the target.
+    ///
+    /// `None` for an action with no `proposed_content` (a delete, or a custom
+    /// action), which is committed by running the action itself.
+    staged_path: Option<PathBuf>,
+    /// A copy of the target as it was, if it existed. Restoring this undoes
+    /// the commit; its absence means the commit created the file, so undoing
+    /// means removing it.
+    backup_path: Option<PathBuf>,
+}
+
+impl std::fmt::Debug for Staged<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Staged")
+            .field("target", &self.target)
+            .field("staged_path", &self.staged_path)
+            .field("backup_path", &self.backup_path)
+            .finish()
+    }
+}
+
+impl<'a> Staged<'a> {
+    /// Writes the new contents and backs up the file being replaced.
+    fn prepare(action: &'a dyn Action) -> Result<Self> {
+        let target = action.target().to_path_buf();
+
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent)?;
+        }
+
+        let backup_path = if target.exists() {
+            let path = scratch_path(&target, "bak");
+            fs::copy(&target, &path)?;
+            Some(path)
+        } else {
+            None
+        };
+
+        let staged_path = match action.proposed_content() {
+            Some(content) => {
+                let path = scratch_path(&target, "new");
+                let mut file = File::create(&path)?;
+                file.write_all(content.as_bytes())?;
+                // Durable before the rename, so a crash cannot leave a renamed
+                // but empty file where the original used to be.
+                file.sync_all()?;
+                Some(path)
+            }
+            None => None,
+        };
+
+        Ok(Self {
+            action,
+            target,
+            staged_path,
+            backup_path,
+        })
+    }
+
+    /// Puts the staged contents in place, or runs the action.
+    fn commit(&self) -> Result<()> {
+        match &self.staged_path {
+            Some(staged) => fs::rename(staged, &self.target)?,
+            None => self.action.execute()?,
         }
         Ok(())
     }
+
+    /// Restores the target to its pre-commit state.
+    fn undo(&self) -> Result<()> {
+        match &self.backup_path {
+            Some(backup) => {
+                fs::copy(backup, &self.target)?;
+            }
+            None => {
+                if self.target.exists() {
+                    fs::remove_file(&self.target)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Removes the scratch files. Best effort: leftovers are harmless.
+    fn discard(&self) {
+        if let Some(path) = &self.staged_path {
+            let _ = fs::remove_file(path);
+        }
+        if let Some(path) = &self.backup_path {
+            let _ = fs::remove_file(path);
+        }
+    }
+}
+
+/// Undoes committed actions in reverse order, reporting the first failure but
+/// still attempting the rest.
+fn rollback(committed: &[Staged<'_>]) -> Result<()> {
+    let mut first_error = None;
+    for entry in committed.iter().rev() {
+        if let Err(e) = entry.undo() {
+            first_error.get_or_insert(e);
+        }
+    }
+    match first_error {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// Builds a unique scratch path beside `target`.
+///
+/// Same directory, so the later rename stays within one filesystem and is
+/// therefore atomic.
+fn scratch_path(target: &Path, kind: &str) -> PathBuf {
+    let parent = target.parent().unwrap_or(Path::new("."));
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    parent.join(format!(
+        ".entangled-{}-{}-{}",
+        kind,
+        std::process::id(),
+        counter
+    ))
 }
 
 /// Produces a unified diff between two strings.
@@ -511,7 +695,13 @@ fn collect_hunks(old: &[&str], new: &[&str], lcs: &[Vec<usize>], context: usize)
 static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Writes content to a file atomically using a temp file.
-fn atomic_write(path: &Path, content: &str) -> io::Result<()> {
+///
+/// The replacement is a single rename within the target's own directory, so a
+/// reader sees either the whole old file or the whole new one -- never a
+/// truncated mixture. Used for generated output and for Entangled's own state
+/// files, which two concurrent processes (a CLI run and a running `watch`) can
+/// otherwise interleave into unparsable JSON.
+pub(crate) fn atomic_write(path: &Path, content: &str) -> io::Result<()> {
     // Create temp file in the same directory with unique name
     let parent = path.parent().unwrap_or(Path::new("."));
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);

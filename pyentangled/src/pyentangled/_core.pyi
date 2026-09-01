@@ -1,6 +1,47 @@
 """Type stubs for pyentangled._core Rust bindings."""
 
-from typing import Optional, Sequence
+from typing import Optional, Sequence, TypedDict
+
+class EntangledError(RuntimeError):
+    """An error raised by the Entangled engine.
+
+    ``exit_code`` is the status the native CLI would exit with for this error
+    class, so a Python front end can report failures identically.
+    """
+
+    exit_code: int
+
+class TargetStatus(TypedDict):
+    """One generated file and its state."""
+
+    path: str
+    resolved_path: str
+    status: str
+
+class ProjectStatus(TypedDict):
+    """A whole project's status."""
+
+    source_files: list[str]
+    targets: list[TargetStatus]
+    tracked_count: int
+
+class Finding(TypedDict):
+    """A single validation finding."""
+
+    severity: str
+    kind: str
+    message: str
+    file: Optional[str]
+    line: Optional[int]
+
+class EvalResult(TypedDict):
+    """The recorded result of running one block."""
+
+    block_id: str
+    runner: str
+    stdout: str
+    stderr: str
+    exit_code: Optional[int]
 
 class Config:
     """Configuration for Entangled."""
@@ -73,6 +114,9 @@ class Context:
     @property
     def base_dir(self) -> str:
         """Get the base directory."""
+        ...
+    def source_patterns(self) -> list[str]:
+        """The configured glob patterns for source documents."""
         ...
     def source_files(self) -> list[str]:
         """Get source files matching the configuration patterns."""
@@ -184,4 +228,32 @@ def sync_documents(ctx: Context, force: bool = False) -> None:
 
 def tangle_ref(doc: Document, name: str, annotate: bool = True) -> str:
     """Tangle a reference by name from a reference map."""
+    ...
+
+def collect_status(ctx: Context) -> ProjectStatus:
+    """Collect the project's status.
+
+    Returns the same values the native CLI reports: each target's ``status`` is
+    one of ``"up-to-date"``, ``"needs-tangle"``, ``"modified"``, ``"missing"``.
+    """
+    ...
+
+def check_documents(ctx: Context) -> list[Finding]:
+    """Validate the project, returning findings with errors first."""
+    ...
+
+def graph_documents(ctx: Context, format: str = "dot") -> str:
+    """Render the reference graph as ``dot``, ``mermaid`` or ``json``."""
+    ...
+
+def eval_documents(
+    ctx: Context,
+    force: bool = False,
+    dry_run: bool = False,
+) -> list[EvalResult]:
+    """Run every block marked ``eval=<runner>`` and return their results.
+
+    Executing a block runs arbitrary code, so this never happens implicitly
+    during tangle, stitch or weave.
+    """
     ...

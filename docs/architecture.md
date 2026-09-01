@@ -168,23 +168,40 @@ Built-in hooks:
      -> For each markdown file:
           Document::load(path, context)
             -> parse_markdown(content, config)
-            -> Extract CodeBlocks into ReferenceMap
+            -> Extract CodeBlocks into ReferenceMap (IDs re-assigned project-wide)
 
-3. Expand References
+2b. Validate
+   analysis.ensure_no_target_collisions()
+     -> Refuse the whole tangle if two block names claim one output file
+        (tangling it could only keep one, discarding the other's code)
+
+3. Lift file headers, then expand references
+   hooks.run_pre_tangle(first block of each target)
+     -> Strip shebang / SPDX lines out of the block, remembering them
    For each target in ReferenceMap.targets():
      -> tangle_ref(refs, name, comment, markers)
           -> Recursively expand <<refname>> patterns
           -> Preserve indentation
           -> Add annotation markers (if not naked)
-     -> hooks.run_post_tangle(content)
+     -> Prepend the lifted header once, above the annotations
+     -> hooks.run_post_tangle(content)   [for third-party hooks]
 
 4. Execute Transaction
    transaction.execute(&mut filedb)
      -> Check for conflicts (external modifications)
-     -> Write files atomically
-     -> Update FileDB with new hashes
-     -> Save filedb.json
+     -> Stage: write every new file beside its target, fsync,
+        copy aside every file being replaced
+     -> Commit: rename each staged file into place
+     -> On failure: roll every committed file back, then report
+     -> Update FileDB with new hashes (only after a full commit)
+     -> Save filedb.json (atomically)
 ```
+
+Block IDs are assigned when the project-wide map is built, not per document:
+per-document IDs restart at zero in every file, so a `#part` block in `a.md` and
+in `b.md` would both be `part[0]`. The map is always built over the *whole*
+project even when the user tangles a subset, so the IDs written into annotations
+do not depend on which files were selected.
 
 ### Stitch (Code to Markdown)
 

@@ -25,6 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -61,7 +62,8 @@ pub struct EvalResult {
     pub block_id: String,
     /// The runner name used.
     pub runner: String,
-    /// Hash of `runner + expanded source`, used for cache invalidation.
+    /// Hash of the resolved runner argv plus the expanded source, used for
+    /// cache invalidation.
     pub content_hash: String,
     /// Captured standard output.
     pub stdout: String,
@@ -114,11 +116,14 @@ impl EvalCache {
     }
 
     /// Saves the cache to disk, creating parent directories as needed.
+    ///
+    /// Written atomically for the same reason as the file database: a partial
+    /// write from an overlapping process would make the cache unreadable.
     pub fn save(&self, path: &Path) -> Result<()> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(path, serde_json::to_string_pretty(self)?)?;
+        crate::io::atomic_write(path, &serde_json::to_string_pretty(self)?)?;
         Ok(())
     }
 }
@@ -187,7 +192,12 @@ fn eval_one(
             return error_result(rb, "", format!("reference expansion failed: {e}"));
         }
     };
-    let hash = content_hash(&rb.runner, &content);
+    // The runner is resolved *before* hashing: the cache identity has to cover
+    // the actual command line, not just the runner's name. Otherwise editing
+    // `[eval.runners] python = [...]` to a different interpreter or argument
+    // set leaves the hash unchanged and a stale result is served.
+    let argv = resolve_runner(ctx, &rb.runner);
+    let hash = content_hash(argv.as_deref(), &content);
 
     // Reuse a fresh cached result when possible.
     if !options.force {
@@ -209,7 +219,7 @@ fn eval_one(
         };
     }
 
-    let argv = match resolve_runner(ctx, &rb.runner) {
+    let argv = match argv {
         Some(a) => a,
         None => {
             return error_result(
@@ -223,7 +233,12 @@ fn eval_one(
         }
     };
 
-    match run_process(&argv, &content) {
+    let timeout = match ctx.config.eval.timeout_secs {
+        0 => None,
+        secs => Some(Duration::from_secs(secs)),
+    };
+
+    match run_process(&argv, &content, &ctx.base_dir, timeout) {
         Ok((stdout, stderr, exit_code)) => EvalResult {
             block_id: rb.name.clone(),
             runner: rb.runner.clone(),
@@ -291,35 +306,157 @@ fn resolve_runner(ctx: &Context, name: &str) -> Option<Vec<String>> {
 }
 
 /// Runs a command with `input` on stdin, capturing stdout, stderr and exit code.
-fn run_process(argv: &[String], input: &str) -> std::io::Result<(String, String, Option<i32>)> {
+///
+/// The child runs in `cwd` (the project root) so that relative imports, file
+/// reads and generated artifacts behave the same however Entangled was invoked
+/// -- from the project directory, via `-C`, or from a library embedding.
+///
+/// stdin is written on its own thread and both output streams are drained on
+/// theirs. Writing the whole script before reading any output would deadlock as
+/// soon as a child filled its stdout or stderr pipe (64 KiB on Linux) while the
+/// parent was still blocked in `write_all`.
+///
+/// `timeout` bounds the whole call, not just the child's own lifetime: a killed
+/// child can leave a grandchild (`sleep` under `sh`, say) holding the output
+/// pipe open, so the collected output is awaited with a deadline too. Whatever
+/// arrived by then is returned with no exit code.
+fn run_process(
+    argv: &[String],
+    input: &str,
+    cwd: &Path,
+    timeout: Option<Duration>,
+) -> std::io::Result<(String, String, Option<i32>)> {
     let mut child = Command::new(&argv[0])
         .args(&argv[1..])
+        .current_dir(cwd)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
 
-    // Write the script then close stdin so the child can finish reading.
-    {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| std::io::Error::other("failed to open child stdin"))?;
-        stdin.write_all(input.as_bytes())?;
-    }
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| std::io::Error::other("failed to open child stdin"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| std::io::Error::other("failed to open child stdout"))?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("failed to open child stderr"))?;
 
-    let output = child.wait_with_output()?;
+    let script = input.to_string();
+    // A child that exits without reading its input gives us EPIPE here; that is
+    // the child's prerogative, not an error to report.
+    std::thread::spawn(move || {
+        let _ = stdin.write_all(script.as_bytes());
+        drop(stdin);
+    });
+
+    let deadline = timeout.map(|t| Instant::now() + t);
+    let out_rx = drain(stdout);
+    let err_rx = drain(stderr);
+
+    let status = wait_with_deadline(&mut child, deadline)?;
+
+    // Once the child is gone the remaining output is normally already in
+    // flight; allow a short grace period so a straggling write is not lost.
+    let collect_deadline = Instant::now() + Duration::from_secs(2);
+    let out = collect(&out_rx, deadline.map(|_| collect_deadline));
+    let err = collect(&err_rx, deadline.map(|_| collect_deadline));
+
+    let mut stderr_text = String::from_utf8_lossy(&err).into_owned();
+    let exit_code = match status {
+        Some(status) => status.code(),
+        None => {
+            let secs = timeout.map(|t| t.as_secs()).unwrap_or(0);
+            if !stderr_text.is_empty() && !stderr_text.ends_with('\n') {
+                stderr_text.push('\n');
+            }
+            stderr_text.push_str(&format!(
+                "entangled: killed after exceeding the {secs}s evaluation timeout (raise or \
+                 disable it with `[eval] timeout_secs`)"
+            ));
+            None
+        }
+    };
+
     Ok((
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-        output.status.code(),
+        String::from_utf8_lossy(&out).into_owned(),
+        stderr_text,
+        exit_code,
     ))
 }
 
-/// Hashes the runner and expanded source for cache invalidation.
-fn content_hash(runner: &str, content: &str) -> String {
+/// Reads a pipe to EOF on its own thread, delivering the bytes over a channel.
+fn drain<R: std::io::Read + Send + 'static>(mut reader: R) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = reader.read_to_end(&mut buf);
+        let _ = tx.send(buf);
+    });
+    rx
+}
+
+/// Takes a drained stream's bytes, giving up at `deadline` if one is set.
+fn collect(rx: &std::sync::mpsc::Receiver<Vec<u8>>, deadline: Option<Instant>) -> Vec<u8> {
+    match deadline {
+        Some(deadline) => rx
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .unwrap_or_default(),
+        None => rx.recv().unwrap_or_default(),
+    }
+}
+
+/// Waits for `child`, killing it if `deadline` passes first.
+///
+/// Returns `None` when the child had to be killed.
+fn wait_with_deadline(
+    child: &mut std::process::Child,
+    deadline: Option<Instant>,
+) -> std::io::Result<Option<std::process::ExitStatus>> {
+    let Some(deadline) = deadline else {
+        return child.wait().map(Some);
+    };
+
+    // `Child` has no portable timed wait, so poll on a short backoff: cheap for
+    // fast blocks, and bounded for slow ones.
+    let mut interval = Duration::from_millis(1);
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(None);
+        }
+        std::thread::sleep(interval.min(remaining));
+        interval = (interval * 2).min(Duration::from_millis(50));
+    }
+}
+
+/// Hashes the resolved runner command line and expanded source for cache
+/// invalidation.
+///
+/// `argv` is the fully resolved command (executable plus every argument), not
+/// the runner's name, so reconfiguring a runner invalidates its cached results.
+fn content_hash(argv: Option<&[String]>, content: &str) -> String {
     let mut hasher = Sha256::new();
-    hasher.update(runner.as_bytes());
+    match argv {
+        Some(argv) => {
+            for arg in argv {
+                hasher.update(arg.as_bytes());
+                hasher.update([0u8]);
+            }
+        }
+        // An unresolvable runner still needs a stable, distinct identity.
+        None => hasher.update(b"<unresolved>\0"),
+    }
     hasher.update([0u8]);
     hasher.update(content.as_bytes());
     hex::encode(hasher.finalize())
@@ -340,8 +477,10 @@ mod tests {
     use crate::readers::parse_markdown;
 
     fn refs_from(input: &str) -> ReferenceMap {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
+        let c = Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        };
         parse_markdown(input, None, &c).unwrap().refs
     }
 
@@ -364,13 +503,35 @@ mod tests {
     }
 
     #[test]
-    fn content_hash_changes_with_content_and_runner() {
-        let a = content_hash("python", "print(1)");
-        let b = content_hash("python", "print(2)");
-        let c = content_hash("bash", "print(1)");
+    fn content_hash_changes_with_content_and_runner_argv() {
+        let python = vec!["python3".to_string()];
+        let bash = vec!["bash".to_string()];
+        let a = content_hash(Some(&python), "print(1)");
+        let b = content_hash(Some(&python), "print(2)");
+        let c = content_hash(Some(&bash), "print(1)");
         assert_ne!(a, b);
         assert_ne!(a, c);
-        assert_eq!(a, content_hash("python", "print(1)"));
+        assert_eq!(a, content_hash(Some(&python), "print(1)"));
+    }
+
+    #[test]
+    fn content_hash_changes_when_runner_arguments_change() {
+        // A runner reconfigured with different arguments must not serve the
+        // result cached under the old command line.
+        let plain = vec!["python3".to_string()];
+        let optimised = vec!["python3".to_string(), "-O".to_string()];
+        assert_ne!(
+            content_hash(Some(&plain), "print(1)"),
+            content_hash(Some(&optimised), "print(1)")
+        );
+    }
+
+    #[test]
+    fn content_hash_argv_boundaries_are_unambiguous() {
+        // ["ab", "c"] and ["a", "bc"] are different commands.
+        let a = vec!["ab".to_string(), "c".to_string()];
+        let b = vec!["a".to_string(), "bc".to_string()];
+        assert_ne!(content_hash(Some(&a), "x"), content_hash(Some(&b), "x"));
     }
 
     #[test]

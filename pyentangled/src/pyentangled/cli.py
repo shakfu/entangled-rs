@@ -17,11 +17,17 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence
 
+from pyentangled import __version__
 from pyentangled._core import (
     Config,
     Context,
     Document,
+    EntangledError,
+    check_documents,
+    collect_status,
+    eval_documents,
     execute_transaction,
+    graph_documents,
     locate_source,
     stitch_documents,
     stitch_files,
@@ -29,6 +35,23 @@ from pyentangled._core import (
     tangle_documents,
     tangle_files,
 )
+
+
+# The native CLI exits with a structured code per error class (see
+# `EntangledError::exit_code` in the Rust crate); bindings attach that code to
+# the raised exception. Reporting a failure identically in both CLIs means using
+# it rather than collapsing everything to 1.
+GENERIC_FAILURE = 1
+# Codes the native CLI produces for conditions this CLI detects itself, rather
+# than by catching an engine error (see `EntangledError::exit_code`).
+OTHER_FAILURE = 5  # EntangledError::Other
+
+
+def report_error(e: BaseException) -> int:
+    """Prints an engine error and returns the exit code the native CLI uses."""
+    print(f"Error: {e}", file=sys.stderr)
+    code = getattr(e, "exit_code", GENERIC_FAILURE)
+    return code if isinstance(code, int) and 0 < code < 256 else GENERIC_FAILURE
 
 
 DEFAULT_CONFIG = """\
@@ -146,7 +169,9 @@ def cmd_init(args: argparse.Namespace) -> int:
 
         if config_path.exists():
             print(f"Error: {config_path} already exists", file=sys.stderr)
-            return 1
+            # `init` runs before the native CLI builds a context, and its
+            # dispatch uses a plain failure code rather than the error's own.
+            return GENERIC_FAILURE
 
         config_path.write_text(DEFAULT_CONFIG)
         print(f"Created {config_path}")
@@ -172,8 +197,7 @@ def cmd_init(args: argparse.Namespace) -> int:
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_tangle(args: argparse.Namespace) -> int:
@@ -193,8 +217,7 @@ def cmd_tangle(args: argparse.Namespace) -> int:
         )
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_stitch(args: argparse.Namespace) -> int:
@@ -214,8 +237,7 @@ def cmd_stitch(args: argparse.Namespace) -> int:
         )
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_sync(args: argparse.Namespace) -> int:
@@ -258,8 +280,7 @@ def cmd_sync(args: argparse.Namespace) -> int:
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_watch(args: argparse.Namespace) -> int:
@@ -272,36 +293,35 @@ def cmd_watch(args: argparse.Namespace) -> int:
             print(f"Watching for changes (debounce: {args.debounce}ms)...")
             print("Press Ctrl+C to stop.")
 
-        # Initial sync
+        # Initial sync. A failure here means the watcher would start from a
+        # state that does not match the sources, so it is reported and the
+        # watcher keeps running only because the next edit may well fix it --
+        # the same policy the native CLI uses.
         try:
             sync_documents(context)
         except Exception as e:
-            print(f"Initial sync error: {e}", file=sys.stderr)
+            print(f"Initial sync failed: {e}", file=sys.stderr)
+            print("Watching anyway; the next change will retry.", file=sys.stderr)
 
-        # Build watched extensions from source file patterns
+        # Derive the watch scope from the configured *patterns*, not from the
+        # files that happen to exist right now: a project whose first `.qmd`
+        # file is created after the watcher starts must still be picked up.
         base_path = Path(context.base_dir)
-        source_files = context.source_files()
-        extensions = set()
-        for f in source_files:
-            ext = Path(f).suffix
-            if ext:
-                extensions.add(ext)
-        if not extensions:
-            extensions = {".md"}
-
-        # Track file modification times
-        file_mtimes: dict[Path, float] = {}
+        patterns = context.source_patterns()
+        if not patterns:
+            patterns = ["**/*.md"]
 
         def get_watched_files() -> dict[Path, float]:
-            """Get all watched files and their modification times."""
-            mtimes = {}
-            for ext in extensions:
-                for path in base_path.rglob(f"*{ext}"):
-                    if ".entangled" not in path.parts:
-                        try:
-                            mtimes[path] = path.stat().st_mtime
-                        except OSError:
-                            pass
+            """Every source file matching the configured patterns, with mtimes."""
+            mtimes: dict[Path, float] = {}
+            for pattern in patterns:
+                for path in base_path.glob(pattern):
+                    if not path.is_file() or ".entangled" in path.parts:
+                        continue
+                    try:
+                        mtimes[path] = path.stat().st_mtime
+                    except OSError:
+                        pass
             return mtimes
 
         file_mtimes = get_watched_files()
@@ -312,21 +332,13 @@ def cmd_watch(args: argparse.Namespace) -> int:
                 time.sleep(0.5)  # Poll interval
 
                 current_mtimes = get_watched_files()
-                changed = False
 
-                # Check for modifications
-                for path, mtime in current_mtimes.items():
-                    old_mtime = file_mtimes.get(path)
-                    if old_mtime is None or mtime > old_mtime:
-                        changed = True
-                        break
-
-                # Check for new files
-                if not changed:
-                    for path in current_mtimes:
-                        if path not in file_mtimes:
-                            changed = True
-                            break
+                # Compare both directions. Only checking the current paths
+                # would miss a *deleted* source file, leaving its generated
+                # output stale on disk indefinitely.
+                changed = current_mtimes.keys() != file_mtimes.keys() or any(
+                    current_mtimes[path] > file_mtimes[path] for path in current_mtimes
+                )
 
                 if changed:
                     now = time.time()
@@ -346,8 +358,7 @@ def cmd_watch(args: argparse.Namespace) -> int:
                 return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -355,22 +366,21 @@ def cmd_status(args: argparse.Namespace) -> int:
     try:
         context = get_context(args.config, args.directory, args.style)
 
-        source_files = context.source_files()
-
-        # Load documents and collect targets
-        targets = []
-        for path in source_files:
-            try:
-                doc = Document.load(path, context)
-                targets.extend(doc.targets())
-            except Exception:
-                pass
+        # The status is computed by the shared Rust implementation, so this
+        # reports exactly the values (and JSON schema) the native CLI reports.
+        # A document that fails to load raises rather than being skipped: a
+        # partial status presented as complete is worse than an error.
+        data = collect_status(context)
+        source_files = data["source_files"]
+        targets = data["targets"]
 
         if args.json:
             output = {
                 "source_files": source_files,
-                "targets": [{"path": t} for t in targets],
-                "tracked_count": context.tracked_file_count(),
+                "targets": [
+                    {"path": t["path"], "status": t["status"]} for t in targets
+                ],
+                "tracked_count": data["tracked_count"],
             }
             print(json.dumps(output, indent=2))
         else:
@@ -384,14 +394,124 @@ def cmd_status(args: argparse.Namespace) -> int:
 
             if args.status_verbose:
                 for t in targets:
-                    print(f"  {t}")
+                    print(f"  {t['path']} ({t['status']})")
 
-            print(f"\nTracked files in database: {context.tracked_file_count()}")
+            counts = {"up-to-date": 0, "needs-tangle": 0, "modified": 0, "missing": 0}
+            for t in targets:
+                counts[t["status"]] = counts.get(t["status"], 0) + 1
+
+            print("\nStatus summary:")
+            print(f"  Up to date: {counts['up-to-date']}")
+            print(f"  Needs tangle: {counts['needs-tangle']}")
+            print(f"  Externally modified: {counts['modified']}")
+            print(f"  Missing: {counts['missing']}")
+
+            print(f"\nTracked files in database: {data['tracked_count']}")
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
+
+
+def cmd_check(args: argparse.Namespace) -> int:
+    """Execute the check command."""
+    try:
+        context = get_context(args.config, args.directory, args.style)
+        findings = check_documents(context)
+
+        if args.json:
+            print(json.dumps(findings, indent=2))
+        else:
+            for f in findings:
+                if f["file"] and f["line"]:
+                    loc = f" ({f['file']}:{f['line']})"
+                elif f["file"]:
+                    loc = f" ({f['file']})"
+                else:
+                    loc = ""
+                line = f"{f['severity']}[{f['kind']}]: {f['message']}{loc}"
+                if f["severity"] == "error":
+                    print(line, file=sys.stderr)
+                else:
+                    print(line)
+
+        errors = sum(1 for f in findings if f["severity"] == "error")
+        warnings = len(findings) - errors
+
+        if errors or (args.strict and warnings):
+            print(
+                f"Error: check failed: {errors} error(s), {warnings} warning(s)",
+                file=sys.stderr,
+            )
+            return OTHER_FAILURE
+        if not args.quiet and not args.json:
+            print("check passed: no issues found.")
+        return 0
+
+    except Exception as e:
+        return report_error(e)
+
+
+def cmd_graph(args: argparse.Namespace) -> int:
+    """Execute the graph command."""
+    try:
+        context = get_context(args.config, args.directory, args.style)
+        rendered = graph_documents(context, args.format)
+
+        if args.output:
+            resolved = Path(context.resolve_path(args.output))
+            resolved.parent.mkdir(parents=True, exist_ok=True)
+            resolved.write_text(rendered, encoding="utf-8")
+            if not args.quiet:
+                print(f"graph: wrote {resolved}")
+        else:
+            print(rendered, end="")
+        return 0
+
+    except Exception as e:
+        return report_error(e)
+
+
+def cmd_eval(args: argparse.Namespace) -> int:
+    """Execute the eval command."""
+    try:
+        context = get_context(args.config, args.directory, args.style)
+        results = eval_documents(context, force=args.force, dry_run=args.dry_run)
+
+        if args.json:
+            print(json.dumps(results, indent=2))
+            return 0
+
+        if not results:
+            print("No runnable blocks found (mark a block with `eval=<runner>`).")
+            return 0
+
+        failed = 0
+        for r in results:
+            ok = r["exit_code"] == 0
+            if args.dry_run:
+                print(f"would run: {r['block_id']} ({r['runner']})")
+                continue
+            if ok:
+                print(f"ok: {r['block_id']} ({r['runner']})")
+            else:
+                failed += 1
+                print(f"FAILED: {r['block_id']} ({r['runner']})", file=sys.stderr)
+            for stream in ("stdout", "stderr"):
+                for line in r[stream].splitlines():
+                    print(f"    {line}", file=sys.stderr if stream == "stderr" else sys.stdout)
+
+        if not args.dry_run:
+            print(
+                f"{len(results)} block(s) evaluated, "
+                f"{len(results) - failed} succeeded, {failed} failed."
+            )
+        # The native CLI reports failed blocks on stderr but still exits 0;
+        # matching that keeps the two CLIs' contracts identical.
+        return 0
+
+    except Exception as e:
+        return report_error(e)
 
 
 def cmd_locate(args: argparse.Namespace) -> int:
@@ -415,7 +535,7 @@ def cmd_locate(args: argparse.Namespace) -> int:
 
         if not Path(full_path).exists():
             print(f"Error: File not found: {full_path}", file=sys.stderr)
-            return 1
+            return OTHER_FAILURE
 
         result = locate_source(context, full_path, line_num)
 
@@ -430,8 +550,7 @@ def cmd_locate(args: argparse.Namespace) -> int:
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_config(args: argparse.Namespace) -> int:
@@ -463,8 +582,7 @@ def cmd_config(args: argparse.Namespace) -> int:
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def cmd_reset(args: argparse.Namespace) -> int:
@@ -517,8 +635,7 @@ def cmd_reset(args: argparse.Namespace) -> int:
         return 0
 
     except Exception as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
+        return report_error(e)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -557,7 +674,7 @@ def create_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "-V", "--version",
         action="version",
-        version="%(prog)s 0.1.0",
+        version=f"%(prog)s {__version__}",
     )
 
     subparsers = parser.add_subparsers(dest="command", metavar="COMMAND")
@@ -690,6 +807,63 @@ def create_parser() -> argparse.ArgumentParser:
         help="Target file and line number (e.g. output.py:10)",
     )
     p_locate.set_defaults(func=cmd_locate)
+
+    # check
+    p_check = subparsers.add_parser(
+        "check",
+        help="Validate references, targets and cycles",
+    )
+    p_check.add_argument(
+        "--json",
+        action="store_true",
+        help="Output findings as JSON",
+    )
+    p_check.add_argument(
+        "--strict",
+        action="store_true",
+        help="Treat warnings as failures",
+    )
+    p_check.set_defaults(func=cmd_check)
+
+    # graph
+    p_graph = subparsers.add_parser(
+        "graph",
+        help="Render the reference graph",
+    )
+    p_graph.add_argument(
+        "--format",
+        default="dot",
+        choices=["dot", "mermaid", "json"],
+        help="Output format (default: dot)",
+    )
+    p_graph.add_argument(
+        "-o", "--output",
+        metavar="FILE",
+        help="Write to FILE instead of stdout",
+    )
+    p_graph.set_defaults(func=cmd_graph)
+
+    # eval
+    p_eval = subparsers.add_parser(
+        "eval",
+        help="Run blocks marked with eval=<runner>",
+    )
+    p_eval.add_argument(
+        "-f", "--force",
+        action="store_true",
+        help="Re-run every block, ignoring the cache",
+    )
+    p_eval.add_argument(
+        "-n", "--dry-run",
+        action="store_true",
+        help="List runnable blocks without executing them",
+    )
+    p_eval.add_argument(
+        "--json",
+        action="store_true",
+        help="Output results as JSON",
+    )
+    p_eval.set_defaults(func=cmd_eval)
 
     # config
     p_config = subparsers.add_parser(

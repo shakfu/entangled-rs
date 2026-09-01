@@ -140,7 +140,21 @@ The watch implementations differ in how they detect file changes:
 
 ### File Filtering
 
-Both CLIs accept file arguments for `tangle` and `stitch` commands, but file filtering is not yet implemented. A warning is printed when files are specified.
+Both CLIs accept file arguments for `tangle` and `stitch`, and both apply them:
+the named files select which outputs are written, while reference resolution and
+block identity stay project-wide (so a reference into another document still
+resolves, and the annotations written are the same ones a full tangle writes).
+
+### Command Coverage
+
+The Python CLI implements every Rust command except `weave`:
+`init`, `tangle`, `stitch`, `sync`, `watch`, `status`, `locate`, `check`,
+`graph`, `eval`, `config`, `reset`.
+
+`weave` stays Rust-only -- its Pandoc integration and output-path handling live
+in the native CLI. `status`, `check`, `graph` and `eval` are computed by the
+shared Rust library in both CLIs, so their values and JSON schemas are
+identical.
 
 ## When to Use Which
 

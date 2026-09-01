@@ -47,6 +47,11 @@ impl FileDB {
     }
 
     /// Saves the file database to a JSON file.
+    ///
+    /// Written atomically: a plain write can be observed half-finished by
+    /// another Entangled process, and a truncated database is treated as
+    /// corrupt and silently replaced with an empty one -- which would in turn
+    /// disable the conflict detection that protects hand-edited files.
     pub fn save(&self, path: &Path) -> Result<()> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
@@ -54,7 +59,7 @@ impl FileDB {
         }
 
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(path, content)?;
+        crate::io::atomic_write(path, &content)?;
         Ok(())
     }
 

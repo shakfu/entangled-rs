@@ -44,9 +44,27 @@ pub enum CodeLine {
     Reference {
         /// Leading indentation preserved from the source line.
         indent: String,
-        /// The referenced block name.
+        /// The referenced block name, resolved the way tangle resolves it.
         name: String,
+        /// Where the referenced block is defined.
+        scope: RefScope,
     },
+}
+
+/// Where a `<<reference>>` resolves to.
+///
+/// Weave renders one document at a time, so a reference to a block defined in
+/// another source file cannot be linked -- but it is not broken either, and
+/// reporting it as missing (which is what happened before this distinction
+/// existed) is simply wrong.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefScope {
+    /// Defined in this document; the renderer can link to it.
+    Local,
+    /// Defined elsewhere in the project; correct, but not linkable from here.
+    Project,
+    /// Not defined anywhere the weaver was told about.
+    Unknown,
 }
 
 /// Captured output of a runnable block, for reproducible-report rendering.
@@ -122,6 +140,17 @@ enum Raw {
     },
 }
 
+/// What weaving one document knows about the project around it.
+#[derive(Debug, Default)]
+pub struct WeaveContext<'a> {
+    /// Captured execution output, keyed by block name.
+    pub outputs: HashMap<String, BlockOutput>,
+    /// Every block name defined anywhere in the project, so a reference to
+    /// another document can be told apart from a genuinely dangling one.
+    /// Empty means "only this document is known".
+    pub project_names: std::collections::HashSet<&'a str>,
+}
+
 /// Parses an Entangled-flavored markdown document into a [`WovenDocument`].
 ///
 /// The document style is detected from `source_path` (`.qmd` -> Quarto,
@@ -131,7 +160,7 @@ pub fn weave_document(
     source_path: Option<&Path>,
     config: &Config,
 ) -> Result<WovenDocument> {
-    weave_document_with_outputs(input, source_path, config, &HashMap::new())
+    weave_document_with_context(input, source_path, config, &WeaveContext::default())
 }
 
 /// Like [`weave_document`], but attaches captured execution output (keyed by
@@ -143,7 +172,31 @@ pub fn weave_document_with_outputs(
     config: &Config,
     outputs: &HashMap<String, BlockOutput>,
 ) -> Result<WovenDocument> {
+    weave_document_with_context(
+        input,
+        source_path,
+        config,
+        &WeaveContext {
+            outputs: outputs.clone(),
+            ..Default::default()
+        },
+    )
+}
+
+/// Weaves one document with knowledge of the surrounding project.
+pub fn weave_document_with_context(
+    input: &str,
+    source_path: Option<&Path>,
+    config: &Config,
+    weave_ctx: &WeaveContext<'_>,
+) -> Result<WovenDocument> {
+    let outputs = &weave_ctx.outputs;
     let doc_style = Style::for_document(source_path, config.style);
+
+    // Block names must be the ones tangle uses, namespace included; otherwise
+    // the names shown in the woven document -- and every anchor derived from
+    // them -- do not correspond to the blocks the reader can reference.
+    let namespace = source_path.and_then(|p| config.namespace_default.prefix_for(p));
 
     let (yaml_header, content) = split_yaml_header(input);
     let frontmatter = yaml_header.map(|h| h.content);
@@ -172,18 +225,69 @@ pub fn weave_document_with_outputs(
                     &token.content,
                     config,
                     doc_style,
+                    namespace.as_deref(),
                 ));
             }
             ExtractResult::Unclosed { info, content, .. } => {
                 // Best-effort: treat an unterminated fence as plain code.
                 flush_prose(&mut prose_buf, &mut raws);
-                raws.push(classify_code(&info, &content, config, doc_style));
+                raws.push(classify_code(
+                    &info,
+                    &content,
+                    config,
+                    doc_style,
+                    namespace.as_deref(),
+                ));
             }
         }
     }
     flush_prose(&mut prose_buf, &mut raws);
 
-    // Pass 2: compute cross-reference metadata across all named blocks.
+    // Pass 2: resolve reference names and compute cross-reference metadata.
+    //
+    // Resolution mirrors tangle: inside `a.md`, a bare `<<part>>` means
+    // `a.md#part` when this document defines it, and otherwise stands for
+    // whatever the project-wide name is.
+    let local_names: HashSet<String> = raws
+        .iter()
+        .filter_map(|raw| match raw {
+            Raw::Code { name: Some(n), .. } => Some(n.clone()),
+            _ => None,
+        })
+        .collect();
+
+    let resolve = |refname: &str| -> (String, RefScope) {
+        if let Some(ns) = namespace.as_deref() {
+            let qualified = format!("{ns}#{refname}");
+            if local_names.contains(&qualified) {
+                return (qualified, RefScope::Local);
+            }
+            if weave_ctx.project_names.contains(qualified.as_str()) {
+                return (qualified, RefScope::Project);
+            }
+        }
+        let scope = if local_names.contains(refname) {
+            RefScope::Local
+        } else if weave_ctx.project_names.contains(refname) {
+            RefScope::Project
+        } else {
+            RefScope::Unknown
+        };
+        (refname.to_string(), scope)
+    };
+
+    for raw in &mut raws {
+        if let Raw::Code { lines, .. } = raw {
+            for line in lines.iter_mut() {
+                if let CodeLine::Reference { name, scope, .. } = line {
+                    let (resolved, resolved_scope) = resolve(name);
+                    *name = resolved;
+                    *scope = resolved_scope;
+                }
+            }
+        }
+    }
+
     let mut name_total: HashMap<String, usize> = HashMap::new();
     let mut used_by: HashMap<String, HashSet<String>> = HashMap::new();
     for raw in &raws {
@@ -263,9 +367,19 @@ pub fn weave_document_with_outputs(
 /// Classifies a fenced code token into a [`Raw::Code`], parsing Entangled
 /// metadata according to the document style. Parse failures degrade gracefully
 /// to a plain (unnamed) code block rather than aborting the weave.
-fn classify_code(info: &str, content: &str, config: &Config, style: Style) -> Raw {
+fn classify_code(
+    info: &str,
+    content: &str,
+    config: &Config,
+    style: Style,
+    namespace: Option<&str>,
+) -> Raw {
     let (name, target, language, body) = parse_block_meta(info, content, config, style);
-    let lines = classify_lines(&body);
+    let name = match (name, namespace) {
+        (Some(name), Some(ns)) => Some(format!("{ns}#{name}")),
+        (name, _) => name,
+    };
+    let lines = classify_lines(&body, namespace);
     Raw::Code {
         name,
         target,
@@ -317,7 +431,12 @@ fn meta_from_props(
 }
 
 /// Splits a code body into classified lines, detecting `<<reference>>` lines.
-fn classify_lines(body: &str) -> Vec<CodeLine> {
+///
+/// Reference names are left as written here; pass 2 qualifies them with
+/// `namespace` when that resolves to a block in this document, mirroring how
+/// tangle resolves a bare reference inside its own file namespace. `scope` is
+/// filled in there too, once every name in the document is known.
+fn classify_lines(body: &str, _namespace: Option<&str>) -> Vec<CodeLine> {
     if body.is_empty() {
         return Vec::new();
     }
@@ -327,6 +446,7 @@ fn classify_lines(body: &str) -> Vec<CodeLine> {
                 CodeLine::Reference {
                     indent: caps["indent"].to_string(),
                     name: caps["refname"].to_string(),
+                    scope: RefScope::Unknown,
                 }
             } else {
                 CodeLine::Text(line.to_string())
@@ -360,9 +480,10 @@ mod tests {
     use crate::config::NamespaceDefault;
 
     fn config() -> Config {
-        let mut c = Config::default();
-        c.namespace_default = NamespaceDefault::None;
-        c
+        Config {
+            namespace_default: NamespaceDefault::None,
+            ..Default::default()
+        }
     }
 
     fn code_blocks(doc: &WovenDocument) -> Vec<&WeaveCodeBlock> {
@@ -401,6 +522,8 @@ mod tests {
             CodeLine::Reference {
                 indent: "    ".to_string(),
                 name: "body".to_string(),
+                // Nothing in the document or the project defines `body`.
+                scope: RefScope::Unknown,
             }
         );
     }

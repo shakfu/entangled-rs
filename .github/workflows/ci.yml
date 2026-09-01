@@ -28,7 +28,22 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
-      - run: cargo clippy -p entangled -p entangled-cli -- -D warnings
+      # --all-targets so tests and benchmarks are linted too: they are shipped
+      # code and were the only places warnings had accumulated.
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  audit:
+    name: Dependency advisories
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Pinned so an advisory-database change cannot turn a green build red
+      # without a visible commit here. Policy (including which unmaintained
+      # transitive crates are accepted, and why) lives in .cargo/audit.toml.
+      - run: cargo install cargo-audit --version ^0.21 --locked
+      - run: cargo audit
 
   test:
     name: Test (${{ matrix.os }})
@@ -49,25 +64,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.9", "3.13"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v5
         with:
-          python-version: ${{ matrix.python }}
-      - name: Create virtualenv and install tools
+          enable-cache: true
+      # The contract tests compare the Python CLI against the native one
+      # (command list, version, status JSON, exit codes) and skip themselves if
+      # it is absent -- so build it, or that half of the suite silently no-ops.
+      - name: Build the native CLI
+        run: cargo build --release -p entangled-cli
+      - name: Set up the environment
         run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install maturin pytest
+          uv venv --python ${{ matrix.python }}
+          uv pip install maturin pytest
       - name: Build and install pyentangled
-        run: |
-          source .venv/bin/activate
-          cd pyentangled && maturin develop
+        working-directory: pyentangled
+        run: uv run maturin develop
       - name: Run pyentangled tests
-        run: |
-          source .venv/bin/activate
-          cd pyentangled && pytest tests/ -v
+        working-directory: pyentangled
+        run: uv run pytest tests/ -v

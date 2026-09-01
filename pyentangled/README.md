@@ -61,13 +61,24 @@ Options:
   -V, --version        Show version
 
 Commands:
+  init     Initialize entangled configuration
   tangle   Extract code from markdown files
   stitch   Update markdown from modified code files
   sync     Synchronize markdown and code files
   watch    Watch for changes and sync automatically
   status   Show status of files
+  locate   Map a tangled file position back to its markdown source
+  check    Validate references, targets and cycles
+  graph    Render the reference graph
+  eval     Run blocks marked with eval=<runner>
+  config   Print effective configuration
   reset    Reset the file database
 ```
+
+`weave` is the one command this CLI does not provide: its Pandoc integration and
+output-path handling live in the native `entangled` binary. Everything else is
+computed by the same Rust library the native CLI uses, so `status`, `check`,
+`graph` and `eval` report identical values and JSON schemas.
 
 ## Python API
 
@@ -154,7 +165,7 @@ print("Hello, World!")
 """)
 
 # Tangle a specific reference
-code = tangle_ref(doc, "file=example.py", annotate=True)
+code = tangle_ref(doc, "file:example.py", annotate=True)
 print(code)
 ```
 

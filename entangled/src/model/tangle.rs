@@ -71,7 +71,7 @@ pub fn tangle_naked(
             let refname = &caps["refname"];
             let combined_indent = format!("{}{}", base_indent, indent);
 
-            let ref_name = ReferenceName::new(refname);
+            let ref_name = refs.resolve_reference(name, refname);
             let expanded = tangle_naked(refs, &ref_name, &combined_indent, detector)?;
             output.push(expanded);
         } else {
@@ -128,7 +128,7 @@ pub fn tangle_annotated(
                 let refname = &caps["refname"];
                 let combined_indent = format!("{}{}", base_indent, indent);
 
-                let ref_name = ReferenceName::new(refname);
+                let ref_name = refs.resolve_reference(name, refname);
                 let expanded = tangle_annotated(
                     refs,
                     &ref_name,
@@ -190,7 +190,7 @@ pub fn tangle_bare(
                 let refname = &caps["refname"];
                 let combined_indent = format!("{}{}", base_indent, indent);
 
-                let ref_name = ReferenceName::new(refname);
+                let ref_name = refs.resolve_reference(name, refname);
                 let expanded = tangle_bare(refs, &ref_name, &combined_indent, detector)?;
                 output.push(expanded);
             } else {

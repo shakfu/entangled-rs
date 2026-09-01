@@ -75,24 +75,16 @@ impl Hook for SpdxLicenseHook {
 
         Ok(Some(PreTangleResult {
             source: new_source,
+            header: spdx_lines,
             metadata: vec![("spdx_header".to_string(), spdx_header)],
         }))
     }
 
-    fn post_tangle(&self, content: &str, block: &CodeBlock) -> Result<Option<PostTangleResult>> {
-        let spdx_lines = Self::extract_spdx_lines(&block.source);
-
-        if spdx_lines.is_empty() || !block.has_target() {
-            return Ok(None);
-        }
-
-        let spdx_header = spdx_lines.join("\n");
-
-        Ok(Some(PostTangleResult {
-            prefix: Some(spdx_header),
-            content: content.to_string(),
-            suffix: None,
-        }))
+    fn post_tangle(&self, _content: &str, _block: &CodeBlock) -> Result<Option<PostTangleResult>> {
+        // Nothing to do: the SPDX header is lifted out of the block by
+        // `pre_tangle` and re-emitted once at the top of the target by the
+        // orchestrator.
+        Ok(None)
     }
 }
 
@@ -151,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn test_post_tangle_with_target() {
+    fn test_pre_tangle_hoists_spdx_out_of_the_block() {
         let hook = SpdxLicenseHook::new();
         let block = test_utils::make_block_lang(
             "test",
@@ -160,11 +152,22 @@ mod tests {
         )
         .with_target(PathBuf::from("lib.rs"));
 
-        let result = hook.post_tangle("fn main() {}", &block).unwrap().unwrap();
-        assert!(result
-            .prefix
-            .unwrap()
-            .contains("SPDX-License-Identifier: MIT"));
+        let result = hook.pre_tangle(&block).unwrap().unwrap();
+        assert_eq!(result.header, vec!["// SPDX-License-Identifier: MIT"]);
+        assert_eq!(result.source, "fn main() {}");
+    }
+
+    #[test]
+    fn test_post_tangle_adds_nothing() {
+        let hook = SpdxLicenseHook::new();
+        let block = test_utils::make_block_lang(
+            "test",
+            "// SPDX-License-Identifier: MIT\nfn main() {}",
+            "rust",
+        )
+        .with_target(PathBuf::from("lib.rs"));
+
+        assert!(hook.post_tangle("fn main() {}", &block).unwrap().is_none());
     }
 
     #[test]

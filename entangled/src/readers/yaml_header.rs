@@ -50,22 +50,21 @@ pub fn extract_yaml_header(input: &str) -> Option<YamlHeader> {
 pub fn split_yaml_header(input: &str) -> (Option<YamlHeader>, &str) {
     match extract_yaml_header(input) {
         Some(header) => {
-            // Find where the remaining content starts
-            let mut pos = 0;
-            let mut line_count = 0;
-            for line in input.lines() {
-                line_count += 1;
-                pos += line.len() + 1; // +1 for newline
-                if line_count >= header.lines_consumed {
-                    break;
+            // Skip past the header by scanning for real newline bytes. Deriving
+            // the offset from `str::lines()` lengths instead would assume every
+            // line ends in a single `\n`, and so land one byte short per CRLF
+            // line -- leaving the tail of the closing `---` in the remainder
+            // (a stray `-` line) and shifting every code block's line number.
+            let mut remaining = input;
+            for _ in 0..header.lines_consumed {
+                match remaining.find('\n') {
+                    Some(idx) => remaining = &remaining[idx + 1..],
+                    None => {
+                        remaining = "";
+                        break;
+                    }
                 }
             }
-            // Handle case where input might not have trailing newline
-            let remaining = if pos <= input.len() {
-                &input[pos.min(input.len())..]
-            } else {
-                ""
-            };
             (Some(header), remaining)
         }
         None => (None, input),

@@ -15,7 +15,12 @@ use crate::errors::{EntangledError, Result};
 ///
 /// - Primary index: `IndexMap<ReferenceId, Arc<CodeBlock>>` (preserves insertion order)
 /// - Secondary index: `HashMap<ReferenceName, Vec<ReferenceId>>` (name lookup)
-/// - Targets: `HashMap<PathBuf, ReferenceName>` (output file registry)
+/// - Targets: `IndexMap<PathBuf, Vec<ReferenceName>>` (output file registry)
+///
+/// A target may legitimately be claimed by several blocks *of the same name*
+/// (continuation blocks concatenate). Distinct names claiming one target is a
+/// collision: the registry records every distinct owner so callers can reject
+/// the situation instead of silently keeping the last writer.
 ///
 /// Blocks are stored behind `Arc` to allow cheap cloning when combining
 /// reference maps from multiple documents during tangle.
@@ -27,8 +32,9 @@ pub struct ReferenceMap {
     /// Name index: Name -> list of IDs with that name.
     name_index: HashMap<ReferenceName, Vec<ReferenceId>>,
 
-    /// Target file registry: Path -> Reference name.
-    targets: HashMap<PathBuf, ReferenceName>,
+    /// Target file registry: Path -> distinct owning reference names, in the
+    /// order they were first seen.
+    targets: IndexMap<PathBuf, Vec<ReferenceName>>,
 
     /// Counter for generating unique IDs per name.
     counters: HashMap<ReferenceName, usize>,
@@ -55,7 +61,7 @@ impl ReferenceMap {
 
         // Register target if present
         if let Some(ref target) = block.target {
-            self.targets.insert(target.clone(), block.name().clone());
+            Self::register_target(&mut self.targets, target.clone(), block.name().clone());
         }
 
         // Update name index
@@ -87,7 +93,7 @@ impl ReferenceMap {
 
         // Register target if present
         if let Some(ref target) = block.target {
-            self.targets.insert(target.clone(), id.name.clone());
+            Self::register_target(&mut self.targets, target.clone(), id.name.clone());
         }
 
         // Update name index
@@ -98,6 +104,57 @@ impl ReferenceMap {
 
         // Insert into primary storage
         self.blocks.insert(id, block);
+    }
+
+    /// Inserts an `Arc<CodeBlock>`, assigning a fresh ID unique *within this
+    /// map* and rewriting the block's own `id` to match.
+    ///
+    /// This is how blocks from several documents are combined into one
+    /// project-wide map: per-document IDs restart at zero in every file, so
+    /// inserting them verbatim would make same-named blocks from different
+    /// files collide (one replacing the other while the name index gained a
+    /// duplicate entry). Renumbering on insertion keeps every block reachable
+    /// and keeps same-name ordering stable.
+    pub fn insert_arc(&mut self, block: Arc<CodeBlock>) -> ReferenceId {
+        let name = block.name().clone();
+        let count = self.counters.entry(name.clone()).or_insert(0);
+        let id = ReferenceId::new(name, *count);
+        *count += 1;
+
+        // Only pay for a deep clone when the ID actually has to change.
+        let block = if block.id == id {
+            block
+        } else {
+            let mut owned = (*block).clone();
+            owned.id = id.clone();
+            Arc::new(owned)
+        };
+
+        if let Some(ref target) = block.target {
+            Self::register_target(&mut self.targets, target.clone(), id.name.clone());
+        }
+
+        self.name_index
+            .entry(id.name.clone())
+            .or_default()
+            .push(id.clone());
+
+        self.blocks.insert(id.clone(), block);
+
+        id
+    }
+
+    /// Replaces the source text of an already-inserted block.
+    ///
+    /// Used by the pre-tangle hook pass, which strips file headers (shebang,
+    /// SPDX) out of a target's first block before reference expansion so they
+    /// can be re-emitted exactly once at the top of the output.
+    pub fn replace_source(&mut self, id: &ReferenceId, source: String) {
+        if let Some(slot) = self.blocks.get_mut(id) {
+            let mut owned = (**slot).clone();
+            owned.source = source;
+            *slot = Arc::new(owned);
+        }
     }
 
     /// Gets a code block by its ID.
@@ -126,9 +183,62 @@ impl ReferenceMap {
             .unwrap_or_default()
     }
 
-    /// Gets the reference name for a target file.
+    /// Gets the reference name that owns a target file.
+    ///
+    /// When several distinct names claim the same target (a collision, see
+    /// [`target_collisions`](Self::target_collisions)) this returns the first
+    /// one seen; callers that write files must reject collisions first.
     pub fn get_target_name(&self, path: &Path) -> Option<&ReferenceName> {
-        self.targets.get(path)
+        self.targets.get(path).and_then(|owners| owners.first())
+    }
+
+    /// Gets every distinct reference name claiming a target file.
+    pub fn get_target_owners(&self, path: &Path) -> &[ReferenceName] {
+        self.targets
+            .get(path)
+            .map_or(&[], |owners| owners.as_slice())
+    }
+
+    /// Returns every target claimed by more than one distinct reference name.
+    ///
+    /// Tangling such a target would silently discard all but one owner's code,
+    /// so `tangle`/`sync` reject the whole operation when this is non-empty.
+    pub fn target_collisions(&self) -> Vec<(&PathBuf, &[ReferenceName])> {
+        self.targets
+            .iter()
+            .filter(|(_, owners)| owners.len() > 1)
+            .map(|(path, owners)| (path, owners.as_slice()))
+            .collect()
+    }
+
+    /// Records `name` as an owner of `target`, keeping distinct owners in
+    /// first-seen order.
+    fn register_target(
+        targets: &mut IndexMap<PathBuf, Vec<ReferenceName>>,
+        target: PathBuf,
+        name: ReferenceName,
+    ) {
+        let owners = targets.entry(target).or_default();
+        if !owners.contains(&name) {
+            owners.push(name);
+        }
+    }
+
+    /// Resolves a `<<refname>>` written inside the block named `from`.
+    ///
+    /// Under the default file namespace a block in `a.md` is named
+    /// `a.md#part`, so a bare `<<part>>` in that same document has to resolve
+    /// within the document's own namespace first; only then does it fall back
+    /// to the literal (global, or already fully-qualified) name. Without this,
+    /// the default configuration cannot resolve any reference at all.
+    pub fn resolve_reference(&self, from: &ReferenceName, refname: &str) -> ReferenceName {
+        if let Some(namespace) = from.namespace() {
+            let qualified = ReferenceName::new(format!("{namespace}#{refname}"));
+            if self.name_index.contains_key(&qualified) {
+                return qualified;
+            }
+        }
+        ReferenceName::new(refname)
     }
 
     /// Checks if a name exists in the map.
