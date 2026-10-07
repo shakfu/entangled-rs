@@ -28,6 +28,14 @@ pub struct ConfigUpdate {
     #[serde(default)]
     pub output_dir: Option<PathBuf>,
 
+    /// Allow generated files outside the project directory.
+    #[serde(default)]
+    pub allow_external_targets: Option<bool>,
+
+    /// Allow one block name on several fences.
+    #[serde(default)]
+    pub split_blocks: Option<bool>,
+
     /// How to annotate tangled output.
     #[serde(default)]
     pub annotation: Option<AnnotationMethod>,
@@ -81,7 +89,10 @@ impl ConfigUpdate {
                 .source_patterns
                 .unwrap_or_else(|| base.source_patterns.clone()),
             output_dir: self.output_dir.or_else(|| base.output_dir.clone()),
-            allow_external_targets: base.allow_external_targets,
+            allow_external_targets: self
+                .allow_external_targets
+                .unwrap_or(base.allow_external_targets),
+            split_blocks: self.split_blocks.unwrap_or(base.split_blocks),
             annotation: self.annotation.unwrap_or(base.annotation),
             namespace_default: self.namespace_default.unwrap_or(base.namespace_default),
             markers: self.markers.unwrap_or_else(|| base.markers.clone()),

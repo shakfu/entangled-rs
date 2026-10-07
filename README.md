@@ -486,7 +486,9 @@ References are expanded recursively with proper indentation preservation.
 
 #### Multiple Blocks with Same Name
 
-Blocks with the same name are concatenated:
+By default a name is one fence: `tangle`, `stitch`, `sync` and `check` refuse a name used by two fences, giving each fence's file and line. Python entangled joins such fences instead; set `split_blocks = true` in `entangled.toml` to do the same, for documents written for it. Under `namespace_default = "file"` (the default) a name is scoped to its document, so two documents may each have a `#setup`.
+
+With `split_blocks = true`, blocks with the same name are concatenated:
 
 ````markdown
 ```python #setup

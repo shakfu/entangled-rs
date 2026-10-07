@@ -36,6 +36,14 @@ fn global_ns() -> Config {
     }
 }
 
+/// The global namespace, with one name allowed on several fences.
+fn global_ns_split() -> Config {
+    Config {
+        split_blocks: true,
+        ..global_ns()
+    }
+}
+
 // --- F1: target collisions must not discard code -----------------------------
 
 #[test]
@@ -80,18 +88,62 @@ fn tangle_leaves_every_file_untouched_when_a_target_collides() {
 
 #[test]
 fn continuation_blocks_may_share_one_target() {
-    // Same *name* twice is the supported multi-block case and must still work.
+    // Same *name* twice joins in document order when `split_blocks` is set.
     let dir = project(&[(
         "doc.md",
         "```python #main file=out.py\nfirst()\n```\n\n```python #main\nsecond()\n```\n",
     )]);
-    let mut ctx = context(dir.path(), global_ns());
+    let mut ctx = context(dir.path(), global_ns_split());
 
     let tx = tangle_documents(&ctx).unwrap();
     tx.execute(&mut ctx.filedb).unwrap();
 
     let out = fs::read_to_string(dir.path().join("out.py")).unwrap();
     assert!(out.contains("first()") && out.contains("second()"), "{out}");
+}
+
+#[test]
+fn one_name_on_two_fences_is_refused_by_default() {
+    let doc = "```python #main file=out.py\nfirst()\n```\n\n```python #main\nsecond()\n```\n";
+    let dir = project(&[("doc.md", doc)]);
+    let ctx = context(dir.path(), global_ns());
+
+    let message = tangle_documents(&ctx).expect_err("split block").to_string();
+    assert!(
+        message.contains("block `main` is defined by 2 fences"),
+        "{message}"
+    );
+    assert!(
+        message.contains("doc.md:1") && message.contains("doc.md:5"),
+        "{message}"
+    );
+    assert!(message.contains("split_blocks = true"), "{message}");
+    assert!(!dir.path().join("out.py").exists());
+    assert!(stitch_documents(&ctx).is_err());
+
+    let findings = entangled::check::check_documents(&ctx).unwrap();
+    let split: Vec<_> = findings
+        .iter()
+        .filter(|f| f.kind == "split-block")
+        .collect();
+    assert_eq!(split.len(), 1, "{findings:?}");
+    assert!(entangled::check::has_errors(&findings));
+}
+
+#[test]
+fn one_name_in_two_documents_is_two_blocks_in_the_file_namespace() {
+    // The default namespace scopes a name to its document: no split.
+    let dir = project(&[
+        ("a.md", "```python #part\na()\n```\n"),
+        ("b.md", "```python #part\nb()\n```\n"),
+    ]);
+    let ctx = context(dir.path(), Config::default());
+    assert_eq!(analyze_project(&ctx).unwrap().refs.len(), 2);
+    let findings = entangled::check::check_documents(&ctx).unwrap();
+    assert!(
+        findings.iter().all(|f| f.kind != "split-block"),
+        "{findings:?}"
+    );
 }
 
 // --- F2: block identity is project-wide --------------------------------------
@@ -106,7 +158,7 @@ fn same_name_blocks_in_different_files_stay_distinct() {
         ),
         ("b.md", "```python #part\nprint('from B')\n```\n"),
     ]);
-    let mut ctx = context(dir.path(), global_ns());
+    let mut ctx = context(dir.path(), global_ns_split());
 
     let tx = tangle_documents(&ctx).unwrap();
     tx.execute(&mut ctx.filedb).unwrap();
@@ -125,7 +177,7 @@ fn every_block_id_in_the_project_is_unique() {
         ("b.md", "```python #part\nb()\n```\n"),
         ("c.md", "```python #part\nc()\n```\n"),
     ]);
-    let ctx = context(dir.path(), global_ns());
+    let ctx = context(dir.path(), global_ns_split());
 
     let analysis = analyze_project(&ctx).unwrap();
     assert_eq!(analysis.refs.len(), 3);
@@ -238,7 +290,13 @@ fn continuation_blocks_do_not_each_contribute_a_header() {
         "doc.md",
         "```python #main file=out.py\n#!/bin/sh\nfirst\n```\n\n```python #main\nsecond\n```\n",
     )]);
-    let mut ctx = context(dir.path(), header_hooks());
+    let mut ctx = context(
+        dir.path(),
+        Config {
+            split_blocks: true,
+            ..header_hooks()
+        },
+    );
 
     let tx = tangle_documents(&ctx).unwrap();
     tx.execute(&mut ctx.filedb).unwrap();
@@ -704,4 +762,17 @@ fn the_pandoc_example_reads_with_a_word_before_its_braces() {
     assert_eq!(names, ["document.md#main", "document.md#print-message"]);
     let langs: Vec<Option<String>> = doc.refs.iter().map(|(_, b)| b.language.clone()).collect();
     assert_eq!(langs, [Some("rust".to_string()), Some("rust".to_string())]);
+}
+
+#[test]
+fn entangled_toml_sets_split_blocks_and_allow_external_targets() {
+    // Both were dropped when entangled.toml was read: only Config had them.
+    let dir = project(&[(
+        "entangled.toml",
+        "split_blocks = true\nallow_external_targets = true\n",
+    )]);
+    let config = entangled::config::read_config(dir.path()).unwrap();
+    assert!(config.split_blocks && config.allow_external_targets);
+    let config = entangled::config::read_config(project(&[]).path()).unwrap();
+    assert!(!config.split_blocks && !config.allow_external_targets);
 }

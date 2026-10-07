@@ -79,6 +79,37 @@ pub struct ProjectAnalysis {
 }
 
 impl ProjectAnalysis {
+    /// Returns an error naming every block defined by more than one fence,
+    /// with each fence's file and line.
+    pub fn ensure_no_split_blocks(&self) -> Result<()> {
+        let split = self.refs.split_names();
+        if split.is_empty() {
+            return Ok(());
+        }
+        let detail = split
+            .iter()
+            .map(|(name, ids)| {
+                let places = ids
+                    .iter()
+                    .filter_map(|id| self.locations.get(id))
+                    .map(|l| format!("{}:{}", l.source_path.display(), l.content_start - 1))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!(
+                    "  block `{name}` is defined by {} fences: {places}",
+                    ids.len()
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        Err(crate::errors::EntangledError::Other(format!(
+            "{} block name(s) are used by more than one fence:\n{detail}\n\
+             Give each fence a name of its own, or set `split_blocks = true` \
+             in entangled.toml to join them in document order.",
+            split.len()
+        )))
+    }
+
     /// Returns an error naming every output file claimed by more than one
     /// distinct block name.
     ///
@@ -107,7 +138,7 @@ impl ProjectAnalysis {
         Err(crate::errors::EntangledError::Other(format!(
             "refusing to tangle: {} output file(s) are claimed by more than one code block, \
              so tangling would discard code:\n{}\n\
-             Give each output file a single block name (continuation blocks may reuse the name).",
+             Give each output file a single block name.",
             collisions.len(),
             detail
         )))
@@ -153,7 +184,11 @@ pub fn analyze_project(ctx: &Context) -> Result<ProjectAnalysis> {
         }
     }
 
-    Ok(ProjectAnalysis { refs, locations })
+    let analysis = ProjectAnalysis { refs, locations };
+    if !ctx.config.split_blocks {
+        analysis.ensure_no_split_blocks()?;
+    }
+    Ok(analysis)
 }
 
 /// Builds a single reference map combining the code blocks of every given

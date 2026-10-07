@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.4.0]
+
+### Changed
+
+- **Breaking: a block name is one fence by default.** `tangle`, `stitch`, `sync`, `status`, `locate` and `weave` refuse a name used by more than one fence, listing each fence's file and line, and `check` reports it as a `split-block` error. A name then says which fence it is, so a rename or a stitch cannot reach the wrong one. Set `split_blocks = true` in `entangled.toml` to join such fences in document order, as Python entangled does. Under the default `file` namespace, the same name in two documents is two blocks and is still allowed.
+
+### Fixed
+
+- **`allow_external_targets` in `entangled.toml` had no effect.** The file is read into `ConfigUpdate`, which had no such field, so the setting was dropped and external targets stayed refused. `ConfigUpdate` now carries it and `split_blocks`. `[eval]` is still dropped the same way.
+
 ## [0.3.0]
 
 ### Changed

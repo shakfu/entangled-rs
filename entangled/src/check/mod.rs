@@ -72,7 +72,33 @@ impl Finding {
 /// stable order within each severity).
 pub fn check_documents(ctx: &Context) -> Result<Vec<Finding>> {
     let refs = combined_reference_map(ctx, &ctx.source_files()?)?;
-    Ok(check_refs(&refs))
+    let mut findings = Vec::new();
+    if !ctx.config.split_blocks {
+        findings.extend(split_block_findings(&refs));
+    }
+    findings.extend(check_refs(&refs));
+    Ok(findings)
+}
+
+/// An error for each block name defined by more than one fence, at its
+/// second fence.
+pub fn split_block_findings(refs: &ReferenceMap) -> Vec<Finding> {
+    refs.split_names()
+        .into_iter()
+        .map(|(name, ids)| {
+            let second = refs.get(ids[1]).map(|b| &b.location);
+            Finding::new(
+                Severity::Error,
+                "split-block",
+                format!(
+                    "block `{name}` is defined by {} fences; give each a name of its own, \
+                     or set `split_blocks = true`",
+                    ids.len()
+                ),
+                second,
+            )
+        })
+        .collect()
 }
 
 /// Validates an already-built reference map.

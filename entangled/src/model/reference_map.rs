@@ -199,6 +199,16 @@ impl ReferenceMap {
             .map_or(&[], |owners| owners.as_slice())
     }
 
+    /// Returns each name defined by more than one code block (a block split
+    /// across fences), with the IDs of its parts in document order.
+    pub fn split_names(&self) -> Vec<(&ReferenceName, Vec<&ReferenceId>)> {
+        self.name_index
+            .iter()
+            .filter(|(_, ids)| ids.len() > 1)
+            .map(|(name, ids)| (name, ids.iter().collect()))
+            .collect()
+    }
+
     /// Returns every target claimed by more than one distinct reference name.
     ///
     /// Tangling such a target would silently discard all but one owner's code,

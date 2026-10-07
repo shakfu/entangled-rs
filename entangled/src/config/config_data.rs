@@ -38,6 +38,14 @@ pub struct Config {
     #[serde(default)]
     pub allow_external_targets: bool,
 
+    /// Allow one block name on several fences, joined in document order.
+    ///
+    /// Off by default: a name then says which fence it is. Python entangled
+    /// joins such fences ("continuation blocks"); set this to read documents
+    /// written for it.
+    #[serde(default)]
+    pub split_blocks: bool,
+
     /// How to annotate tangled output.
     #[serde(default)]
     pub annotation: AnnotationMethod,
@@ -110,6 +118,7 @@ impl Default for Config {
             source_patterns: default_source_patterns(),
             output_dir: None,
             allow_external_targets: false,
+            split_blocks: false,
             annotation: AnnotationMethod::default(),
             namespace_default: NamespaceDefault::default(),
             markers: Markers::default(),

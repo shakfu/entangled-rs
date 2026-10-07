@@ -385,7 +385,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "entangled-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -401,7 +401,7 @@ dependencies = [
 
 [[package]]
 name = "entangled-rs"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -912,7 +912,7 @@ checksum = "007d8adb5ddab6f8e3f491ac63566a7d5002cc7ed73901f72057943fa71ae1ae"
 
 [[package]]
 name = "pyentangled"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "entangled-rs",
  "pyo3",
