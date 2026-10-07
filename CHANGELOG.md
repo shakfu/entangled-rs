@@ -6,11 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.0]
+
 ### Changed
+
+- **Weave's HTML backend is behind an `html` feature**, on by default. `WovenDocument::to_html`, `weave_to_html` and `HtmlOptions` need it; the weave transform and `to_markdown` do not. `highlight` now turns `html` on. With `default-features = false` the library pulls 48 crates, against 94 before; with defaults, 75.
 
 - **The library crate publishes as `entangled-rs`.** `entangled` on crates.io is an unrelated fork-join executor and cannot be reclaimed. The lib target is still named `entangled`, so dependents write `entangled-rs = "0.2"` in `Cargo.toml` and `use entangled::...` in code, as `xml-rs` does for `xml`. The CLI crate (`entangled-cli`) and its binary (`entangled`) are unchanged.
 
 - Manifest `authors` and `repository` now name this fork rather than the upstream Python project.
+
+### Removed
+
+- **`tokio`, `notify` and `serde_yaml` are no longer dependencies of the library.** None was used: the CLI's `watch` declares its own `notify`, and front matter is parsed by `parse_simple_yaml`. `EntangledError::YamlParse` goes with `serde_yaml`; nothing produced it, but a `match` that names it no longer compiles, so this release is 0.3.0.
+
+### Fixed
+
+- **Pandoc style reads a word before the braces.** ```` ```text {.rust #main file=main.rs} ```` failed with "Unexpected input" in Pandoc style, so the bundled `examples/pandoc-style` did not tangle. A leading word is what keeps GitHub from taking `{.rust` as the language. The braces hold the attributes, as before; the word is the language only when the braces name none.
 
 ## [0.2.1]
 

@@ -242,8 +242,24 @@ impl Properties {
 
     /// Parses a Pandoc-style info string: `{.python #main file=out.py}`.
     /// Strips outer braces and uses the standard parser.
+    ///
+    /// A word may come before the braces, `text {.rust #main}`: GitHub takes an
+    /// info string's first word as the language, so a document leads with one
+    /// to keep it from reading `{.rust` as a language. The braces hold the
+    /// attributes; the word is the language only when they name none.
     pub fn parse_pandoc(input: &str) -> crate::errors::Result<Self> {
         let trimmed = input.trim();
+        if let Some(open) = trimmed
+            .find('{')
+            .filter(|&i| i > 0 && trimmed.ends_with('}'))
+        {
+            let word = trimmed[..open].trim();
+            let mut props = Self::parse(strip_braces(&trimmed[open..]))?;
+            if props.first_class().is_none() && !word.contains(char::is_whitespace) {
+                props.items.insert(0, Property::Class(word.to_string()));
+            }
+            return Ok(props);
+        }
         let inner = strip_braces(trimmed);
         Self::parse(inner)
     }
@@ -407,6 +423,18 @@ mod tests {
     fn test_pandoc_simple() {
         let props = Properties::parse_pandoc("{.python}").unwrap();
         assert_eq!(props.first_class(), Some("python"));
+    }
+
+    #[test]
+    fn test_pandoc_after_a_word_for_github() {
+        let props = Properties::parse_pandoc("text {.rust #main file=main.rs}").unwrap();
+        assert_eq!(props.first_class(), Some("rust"));
+        assert_eq!(props.first_id(), Some("main"));
+        assert_eq!(props.file(), Some("main.rs"));
+        // With no class in the braces, the word is the language.
+        let props = Properties::parse_pandoc("python {#main}").unwrap();
+        assert_eq!(props.first_class(), Some("python"));
+        assert_eq!(props.first_id(), Some("main"));
     }
 
     #[test]

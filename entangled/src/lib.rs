@@ -50,6 +50,8 @@ pub use interface::Context;
 pub use model::{CodeBlock, ReferenceId, ReferenceMap, ReferenceName};
 pub use style::Style;
 pub use weave::{
-    weave_document, weave_document_with_context, weave_document_with_outputs, weave_to_html,
-    weave_to_markdown, BlockOutput, HtmlOptions, RefScope, WeaveContext, WovenDocument,
+    weave_document, weave_document_with_context, weave_document_with_outputs, weave_to_markdown,
+    BlockOutput, RefScope, WeaveContext, WovenDocument,
 };
+#[cfg(feature = "html")]
+pub use weave::{weave_to_html, HtmlOptions};

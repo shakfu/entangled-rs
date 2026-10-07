@@ -1,6 +1,6 @@
 [package]
 name = "entangled-rs"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 description = "Literate programming engine - Rust translation"
 license = "MIT"
@@ -17,11 +17,9 @@ regex = "1"
 once_cell = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_yaml = "0.9"
 toml = "0.8"
 glob = "0.3"
-notify = "8"
-pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"], optional = true }
 syntect = { version = "5", default-features = false, features = [
     "default-fancy",
 ], optional = true }
@@ -30,17 +28,19 @@ chrono = { version = "0.4", features = ["serde"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 tracing = "0.1"
-tokio = { version = "1", features = ["full"] }
 hex = "0.4"
 clap = { version = "4", features = ["derive"], optional = true }
 
 [features]
-default = ["highlight"]
+default = ["html", "highlight"]
 clap = ["dep:clap"]
+# Weave's HTML backend (`WovenDocument::to_html`, `weave_to_html`). Pulls in
+# pulldown-cmark. The weave transform and its markdown backend need neither.
+html = ["dep:pulldown-cmark"]
 # Server-side syntax highlighting for the weave HTML backend. Pulls in syntect
 # (pure-Rust fancy-regex backend). Disable with --no-default-features for a
 # smaller binary; code then falls back to semantic `language-xxx` classes.
-highlight = ["dep:syntect"]
+highlight = ["html", "dep:syntect"]
 
 [dev-dependencies]
 pretty_assertions = "1"

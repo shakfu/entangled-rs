@@ -21,9 +21,6 @@ pub enum EntangledError {
     #[error("JSON parse error: {0}")]
     JsonParse(#[from] serde_json::Error),
 
-    #[error("YAML parse error: {0}")]
-    YamlParse(#[from] serde_yaml::Error),
-
     #[error("Parse error at {location}: {message}")]
     Parse {
         location: TextLocation,
@@ -81,7 +78,6 @@ impl EntangledError {
             Self::Config(_)
             | Self::TomlParse(_)
             | Self::JsonParse(_)
-            | Self::YamlParse(_)
             | Self::InvalidProperty(_)
             | Self::MissingProperty(_)
             | Self::GlobPattern(_) => 2,

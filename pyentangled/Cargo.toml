@@ -1,6 +1,6 @@
 [package]
 name = "pyentangled"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 description = "Python bindings for Entangled literate programming engine"
 license = "MIT"
@@ -11,5 +11,5 @@ name = "_core"
 crate-type = ["cdylib"]
 
 [dependencies]
-entangled-rs = { path = "../entangled", version = "0.2.1" }
+entangled-rs = { path = "../entangled", version = "0.3.0" }
 pyo3 = { version = "0.29", features = ["extension-module", "abi3-py39"] }

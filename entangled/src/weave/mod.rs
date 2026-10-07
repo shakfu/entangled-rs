@@ -12,9 +12,9 @@
 //!    and cross-reference metadata (which block a `<<reference>>` points at, and
 //!    which blocks a given block is *used by*).
 //! 2. Pluggable **backends** render a [`WovenDocument`]. A self-contained HTML
-//!    backend ([`WovenDocument::to_html`]) ships in-tree; a clean-markdown
-//!    backend ([`WovenDocument::to_markdown`]) produces Pandoc/Quarto-ready
-//!    output for every other target.
+//!    backend (`WovenDocument::to_html`, behind the `html` feature) ships
+//!    in-tree; a clean-markdown backend ([`WovenDocument::to_markdown`])
+//!    produces Pandoc/Quarto-ready output for every other target.
 //!
 //! Pointing Pandoc or Quarto at the *raw* Entangled markdown does not work: they
 //! render `<<imports>>` as literal text and choke on `#name file=path`
@@ -29,10 +29,13 @@ use crate::model::{extract_quarto_options, Properties};
 use crate::readers::{extract_all_tokens, parse_simple_yaml, split_yaml_header, ExtractResult};
 use crate::style::Style;
 
+#[cfg(feature = "html")]
 mod highlight;
+#[cfg(feature = "html")]
 mod html;
 mod markdown;
 
+#[cfg(feature = "html")]
 pub use html::HtmlOptions;
 
 /// A single line of a code block, classified for weaving.
@@ -456,6 +459,7 @@ fn classify_lines(body: &str, _namespace: Option<&str>) -> Vec<CodeLine> {
 }
 
 /// Weaves a document directly to a standalone (or fragment) HTML string.
+#[cfg(feature = "html")]
 pub fn weave_to_html(
     input: &str,
     source_path: Option<&Path>,

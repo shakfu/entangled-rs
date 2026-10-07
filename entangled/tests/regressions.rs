@@ -577,6 +577,7 @@ fn a_block_producing_more_output_than_a_pipe_holds_does_not_deadlock() {
 // --- F10: HTML anchors are unique --------------------------------------------
 
 #[test]
+#[cfg(feature = "html")]
 fn names_that_normalise_identically_get_distinct_anchors() {
     use entangled::{weave_document, HtmlOptions};
 
@@ -600,6 +601,7 @@ fn names_that_normalise_identically_get_distinct_anchors() {
 }
 
 #[test]
+#[cfg(feature = "html")]
 fn a_name_with_no_alphanumerics_still_gets_an_anchor() {
     use entangled::{weave_document, HtmlOptions};
 
@@ -679,4 +681,27 @@ fn a_corrupt_file_database_is_quarantined_not_overwritten() {
         fs::read_to_string(quarantined).unwrap(),
         "{ this is not json"
     );
+}
+
+// --- The Pandoc example's `text {.rust #main}` fences -----------------------
+
+#[test]
+fn the_pandoc_example_reads_with_a_word_before_its_braces() {
+    use entangled::readers::parse_markdown;
+    use entangled::Style;
+
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../examples/pandoc-style/document.md");
+    // The examples are not in the published crate.
+    let Ok(text) = fs::read_to_string(&path) else {
+        return;
+    };
+    let config = Config {
+        style: Style::Pandoc,
+        ..Default::default()
+    };
+    let doc = parse_markdown(&text, Some(Path::new("document.md")), &config).unwrap();
+    let names: Vec<String> = doc.refs.iter().map(|(id, _)| id.name.to_string()).collect();
+    assert_eq!(names, ["document.md#main", "document.md#print-message"]);
+    let langs: Vec<Option<String>> = doc.refs.iter().map(|(_, b)| b.language.clone()).collect();
+    assert_eq!(langs, [Some("rust".to_string()), Some("rust".to_string())]);
 }
